@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="Sobolo Chat">
+  <rect width="120" height="120" rx="28" fill="#f17128"/>
+  <path fill="#ffffff" d="M38 82c0-22 12-38 32-38 6 0 12 1 16 4l-6 14c-3-2-7-3-11-3-10 0-16 8-16 20v3H38z"/>
+  <path fill="#2e5b9a" d="M52 48h28v10H52z"/>
+</svg>

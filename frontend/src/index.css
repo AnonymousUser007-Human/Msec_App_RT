@@ -1,0 +1,74 @@
+@import "tailwindcss";
+
+/* Palette Sobolo Chat (logo) — orange #F17128, bleu #2E5B9A, ardoise #34495E */
+:root {
+  color-scheme: light;
+  --sc-orange: #f17128;
+  --sc-orange-hover: #e86520;
+  --sc-blue: #2e5b9a;
+  --sc-slate: #34495e;
+  --sc-page: #f8f9fa;
+  --sc-thread: #f8f9fa;
+  --sc-sidebar: #ffffff;
+  --sc-header: #ffffff;
+  --sc-elevated: #ffffff;
+  --sc-muted-bg: #f0f2f5;
+  --sc-text: #34495e;
+  --sc-text-muted: #5d6d7e;
+  --sc-border: #dde2e8;
+  --sc-input-bg: #ffffff;
+  --sc-bubble-mine: #f17128;
+  --sc-bubble-other: #ffffff;
+  --sc-bubble-other-text: #34495e;
+  --sc-overlay: rgba(15, 23, 42, 0.45);
+  --sc-error-bg: #fdecea;
+  --sc-error-border: #f5c6cb;
+  --sc-error-text: #721c24;
+  --sc-online: #f17128;
+}
+
+html.dark {
+  color-scheme: dark;
+  --sc-page: #121212;
+  --sc-thread: #121212;
+  --sc-sidebar: #1a252f;
+  --sc-header: #1a252f;
+  --sc-elevated: #2c3e50;
+  --sc-muted-bg: #243342;
+  --sc-text: #ecf0f1;
+  --sc-text-muted: #bdc3c7;
+  --sc-border: #3d5266;
+  --sc-input-bg: #1a252f;
+  --sc-bubble-mine: #f17128;
+  --sc-bubble-other: #1a252f;
+  --sc-bubble-other-text: #ecf0f1;
+  --sc-overlay: rgba(0, 0, 0, 0.65);
+  --sc-error-bg: rgba(127, 29, 29, 0.35);
+  --sc-error-border: #991b1b;
+  --sc-error-text: #fecaca;
+  --sc-online: #ffffff;
+}
+
+@layer base {
+  html {
+    font-family: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+    background-color: var(--sc-page);
+    color: var(--sc-text);
+  }
+}
+
+@layer components {
+  .font-display {
+    font-family: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+    letter-spacing: -0.03em;
+  }
+
+  .sc-link {
+    color: var(--sc-blue);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .sc-link:hover {
+    filter: brightness(1.08);
+  }
+}

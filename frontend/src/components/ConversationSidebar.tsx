@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState, type RefObject } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type RefObject } from 'react'
+import { toast } from 'sonner'
 import type { Socket } from 'socket.io-client'
 import { useAuth } from '../context/AuthContext'
 import type { Conversation } from '../lib/types'
@@ -13,6 +14,8 @@ type Props = {
   onNewChat: () => void
   socket: Socket | null
   selectedRef: RefObject<string | null>
+  /** Après changement de photo de profil : rafraîchir les membres dans les conversations. */
+  onProfileUpdated?: () => void
 }
 
 export function ConversationSidebar({
@@ -22,9 +25,12 @@ export function ConversationSidebar({
   onNewChat,
   socket,
   selectedRef,
+  onProfileUpdated,
 }: Props) {
-  const { user, token, logout } = useAuth()
+  const { user, token, logout, uploadAvatar, patchProfile } = useAuth()
   const [typingByConv, setTypingByConv] = useState<Record<string, string>>({})
+  const [avatarBusy, setAvatarBusy] = useState(false)
+  const avatarFileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (!socket || !user) return
@@ -67,9 +73,38 @@ export function ConversationSidebar({
   )
 
   const handleSelect = (id: string) => {
-    onSelect(id)
     selectedRef.current = id
     void markReadQuiet(id)
+    onSelect(id)
+  }
+
+  const onAvatarFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setAvatarBusy(true)
+    try {
+      await uploadAvatar(file)
+      toast.success('Photo de profil mise à jour')
+      onProfileUpdated?.()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Envoi de la photo impossible')
+    } finally {
+      setAvatarBusy(false)
+    }
+  }
+
+  const onRemoveAvatar = async () => {
+    setAvatarBusy(true)
+    try {
+      await patchProfile({ avatar: null })
+      toast.success('Photo retirée')
+      onProfileUpdated?.()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Mise à jour impossible')
+    } finally {
+      setAvatarBusy(false)
+    }
   }
 
   if (!user) return null
@@ -91,18 +126,54 @@ export function ConversationSidebar({
       </div>
 
       <div className="shrink-0 border-b border-[var(--sc-border)] px-4 py-3">
-        <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-[var(--sc-border)] bg-[var(--sc-input-bg)] text-sm font-bold text-[var(--sc-text)]">
-            {initials(user.name)}
-          </div>
+        <input
+          ref={avatarFileRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif"
+          className="hidden"
+          onChange={onAvatarFileChange}
+        />
+        <div className="flex items-start gap-3">
+          <button
+            type="button"
+            disabled={avatarBusy}
+            aria-label="Changer la photo de profil"
+            title="Changer la photo de profil"
+            onClick={() => avatarFileRef.current?.click()}
+            className="relative flex h-14 w-14 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-2xl border border-[var(--sc-border)] bg-[var(--sc-input-bg)] text-sm font-bold text-[var(--sc-text)] transition hover:border-[var(--sc-orange)] disabled:cursor-wait disabled:opacity-70"
+          >
+            {user.avatar ? (
+              <img src={mediaUrl(user.avatar)} alt="" className="h-full w-full object-cover" />
+            ) : (
+              initials(user.name)
+            )}
+            {avatarBusy ? (
+              <span className="absolute inset-0 flex items-center justify-center bg-black/35">
+                <span
+                  className="h-6 w-6 animate-spin rounded-full border-2 border-white border-t-transparent"
+                  aria-hidden
+                />
+              </span>
+            ) : null}
+          </button>
           <div className="min-w-0 flex-1">
             <p className="truncate font-medium text-[var(--sc-text)]">{user.name}</p>
-            <p className="truncate text-xs text-[var(--sc-text-muted)]">SOBOLO CHAT</p>
+            <p className="truncate text-xs text-[var(--sc-text-muted)]">Mon profil · photo : appuyez sur l’image</p>
+            {user.avatar ? (
+              <button
+                type="button"
+                disabled={avatarBusy}
+                onClick={() => void onRemoveAvatar()}
+                className="mt-1 cursor-pointer text-left text-xs text-[var(--sc-text-muted)] underline decoration-[var(--sc-border)] underline-offset-2 transition hover:text-[var(--sc-orange)] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Retirer la photo
+              </button>
+            ) : null}
           </div>
           <button
             type="button"
             onClick={logout}
-            className="cursor-pointer rounded-lg border border-[var(--sc-border)] px-2 py-1 text-xs text-[var(--sc-text-muted)] transition hover:border-[var(--sc-orange)] hover:text-[var(--sc-text)]"
+            className="shrink-0 cursor-pointer rounded-lg border border-[var(--sc-border)] px-2 py-1 text-xs text-[var(--sc-text-muted)] transition hover:border-[var(--sc-orange)] hover:text-[var(--sc-text)]"
           >
             Déconnexion
           </button>

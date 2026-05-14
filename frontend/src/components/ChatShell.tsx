@@ -250,6 +250,7 @@ export function ChatShell() {
             onNewChat={() => setModalOpen(true)}
             socket={socket}
             selectedRef={selectedRef}
+            onProfileUpdated={() => void loadConversations()}
           />
         </div>
 

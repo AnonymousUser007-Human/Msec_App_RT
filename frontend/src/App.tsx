@@ -1,8 +1,15 @@
+import { useEffect, useState } from 'react'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { ThemeProvider } from './context/ThemeContext'
 import { AppToaster } from './components/AppToaster'
 import { AuthScreen } from './components/AuthScreen'
 import { ChatShell } from './components/ChatShell'
+import { NotFoundPage } from './components/NotFoundPage'
+
+function isHomePath(pathname: string): boolean {
+  const normalized = pathname.replace(/\/+$/, '') || '/'
+  return normalized === '/'
+}
 
 function Gate() {
   const { loading, user } = useAuth()
@@ -24,12 +31,24 @@ function Gate() {
 }
 
 export default function App() {
+  const [pathname, setPathname] = useState(() => window.location.pathname)
+
+  useEffect(() => {
+    const sync = () => setPathname(window.location.pathname)
+    window.addEventListener('popstate', sync)
+    return () => window.removeEventListener('popstate', sync)
+  }, [])
+
   return (
     <ThemeProvider>
       <AppToaster />
-      <AuthProvider>
-        <Gate />
-      </AuthProvider>
+      {!isHomePath(pathname) ? (
+        <NotFoundPage />
+      ) : (
+        <AuthProvider>
+          <Gate />
+        </AuthProvider>
+      )}
     </ThemeProvider>
   )
 }

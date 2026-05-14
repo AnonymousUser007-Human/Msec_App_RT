@@ -710,6 +710,23 @@ export function ChatShell() {
     await loadLiveRooms()
   }
 
+  const resumeHostedLive = async (roomId: string) => {
+    if (!token) return
+    try {
+      await getLocalLiveStream()
+      hostingLiveIdRef.current = roomId
+      joinedLiveIdRef.current = roomId
+      coHostingLiveIdRef.current = null
+      setHostingLiveId(roomId)
+      setJoinedLiveId(roomId)
+      setCoHostingLiveId(null)
+      socket?.emit('live:join', { roomId })
+      await loadLiveRooms()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Impossible de reprendre le live')
+    }
+  }
+
   const leaveLive = async (roomId: string) => {
     if (!token) return
     await postJson('/api/live/' + roomId + '/leave', {}, token)
@@ -1146,7 +1163,7 @@ export function ChatShell() {
                             </div>
                           </div>
                         ) : null}
-                        {joinedLiveId === room.id ? (
+                        {joinedLiveId === room.id || room.hostId === user?.id ? (
                           <div className="relative mt-3 overflow-hidden rounded-2xl bg-black text-white" onClick={() => sendLiveTap(room.id)}>
                             <div className="grid gap-2 p-2 md:grid-cols-[minmax(0,1fr)_minmax(160px,220px)]">
                               <LiveVideoTile
@@ -1172,6 +1189,26 @@ export function ChatShell() {
                                 ) : null}
                               </div>
                             </div>
+                            {room.hostId === user?.id && (!localLiveStream || hostingLiveId !== room.id || joinedLiveId !== room.id) ? (
+                              <div className="absolute inset-0 flex items-center justify-center bg-black/55 px-4 text-center backdrop-blur-sm">
+                                <div className="max-w-xs rounded-2xl border border-white/15 bg-black/70 p-4">
+                                  <p className="text-sm font-semibold text-white">Votre live est toujours actif</p>
+                                  <p className="mt-1 text-xs text-white/70">
+                                    Reprenez la caméra pour revoir l’écran live et continuer à diffuser.
+                                  </p>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      void resumeHostedLive(room.id)
+                                    }}
+                                    className="mt-3 cursor-pointer rounded-xl bg-[var(--sc-orange)] px-4 py-2 text-sm font-semibold text-white"
+                                  >
+                                    Reprendre le live
+                                  </button>
+                                </div>
+                              </div>
+                            ) : null}
                             {liveTapBursts
                               .filter((burst) => burst.roomId === room.id)
                               .map((burst) => (

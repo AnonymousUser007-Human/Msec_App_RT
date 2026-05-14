@@ -35,6 +35,7 @@ type LiveVideoTileProps = {
   label: string
   muted?: boolean
   emptyText?: string
+  size?: 'large' | 'small'
 }
 
 function messagePreview(m: Message): string {
@@ -66,15 +67,23 @@ function liveDisplayName(room: LiveRoom, userId: string, currentUserId?: string)
   return room.participants.find((participant) => participant.id === userId)?.name ?? 'Invité'
 }
 
-function LiveVideoTile({ stream, label, muted = false, emptyText = 'Connexion au flux vidéo…' }: LiveVideoTileProps) {
+function LiveVideoTile({ stream, label, muted = false, emptyText = 'Connexion au flux vidéo…', size = 'large' }: LiveVideoTileProps) {
   const ref = useRef<HTMLVideoElement | null>(null)
+  const frameClass =
+    size === 'large'
+      ? 'min-h-[52vh] md:min-h-[62vh]'
+      : 'min-h-32 md:min-h-36'
+  const mediaClass =
+    size === 'large'
+      ? 'h-full min-h-[52vh] w-full bg-black object-cover md:min-h-[62vh]'
+      : 'h-full min-h-32 w-full bg-black object-cover md:min-h-36'
 
   useEffect(() => {
     attachVideoStream(ref.current, stream)
   }, [stream])
 
   return (
-    <div className="relative min-h-48 overflow-hidden rounded-2xl bg-black">
+    <div className={`relative overflow-hidden rounded-2xl bg-black ${frameClass}`}>
       {stream ? (
         <video
           ref={ref}
@@ -83,10 +92,10 @@ function LiveVideoTile({ stream, label, muted = false, emptyText = 'Connexion au
           playsInline
           controls={!muted}
           onLoadedMetadata={(e) => void e.currentTarget.play().catch(() => {})}
-          className="aspect-[9/16] max-h-[70vh] w-full bg-black object-cover"
+          className={mediaClass}
         />
       ) : (
-        <div className="flex aspect-[9/16] max-h-[70vh] w-full items-center justify-center px-4 text-center text-xs text-white/75">
+        <div className={`flex ${mediaClass} items-center justify-center px-4 text-center text-xs text-white/75`}>
           {emptyText}
         </div>
       )}
@@ -780,7 +789,24 @@ export function ChatShell() {
   const remoteLiveEntries = Object.entries(remoteLiveStreams)
   const shouldShowLocalLiveTile = (room: LiveRoom) =>
     Boolean(localLiveStream && (hostingLiveId === room.id || coHostingLiveId === room.id || room.hostId === user?.id))
-  const liveTileCount = (room: LiveRoom) => remoteLiveEntries.length + (shouldShowLocalLiveTile(room) ? 1 : 0)
+  const liveHostStream = (room: LiveRoom) =>
+    room.hostId === user?.id ? localLiveStream : (remoteLiveStreams[room.hostId] ?? null)
+  const liveSecondaryTiles = (room: LiveRoom) => {
+    const tiles = remoteLiveEntries
+      .filter(([remoteUserId]) => remoteUserId !== room.hostId)
+      .map(([remoteUserId, stream]) => ({
+        id: remoteUserId,
+        label: liveDisplayName(room, remoteUserId, user?.id),
+        stream,
+        muted: false,
+      }))
+
+    if (shouldShowLocalLiveTile(room) && room.hostId !== user?.id) {
+      tiles.unshift({ id: 'local', label: 'Vous', stream: localLiveStream!, muted: true })
+    }
+
+    return tiles
+  }
 
   return (
     <div
@@ -909,7 +935,7 @@ export function ChatShell() {
 
       {socialPanel ? (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 md:items-center">
-          <div className="w-full max-w-lg overflow-hidden rounded-3xl border border-[var(--sc-border)] bg-[var(--sc-elevated)] shadow-2xl">
+          <div className={`w-full overflow-hidden rounded-3xl border border-[var(--sc-border)] bg-[var(--sc-elevated)] shadow-2xl ${socialPanel === 'live' ? 'max-w-6xl' : 'max-w-lg'}`}>
             <div className="flex items-center justify-between border-b border-[var(--sc-border)] px-4 py-3">
               <h3 className="font-display text-lg font-semibold text-[var(--sc-text)]">
                 {socialPanel === 'status' ? 'Statuts' : 'Live'}
@@ -964,7 +990,7 @@ export function ChatShell() {
                     </label>
                   </div>
                 </div>
-                <div className="max-h-96 space-y-2 overflow-y-auto">
+                <div className="max-h-[min(78vh,900px)] space-y-2 overflow-y-auto">
                   {statuses.length === 0 ? (
                     <p className="py-8 text-center text-sm text-[var(--sc-text-muted)]">Aucun statut actif.</p>
                   ) : (
@@ -1025,7 +1051,7 @@ export function ChatShell() {
                     Démarrer un live
                   </button>
                 </div>
-                <div className="max-h-96 space-y-2 overflow-y-auto">
+                <div className="max-h-[min(78vh,900px)] space-y-2 overflow-y-auto">
                   {liveRooms.length === 0 ? (
                     <p className="py-8 text-center text-sm text-[var(--sc-text-muted)]">Aucun live actif.</p>
                   ) : (
@@ -1122,20 +1148,29 @@ export function ChatShell() {
                         ) : null}
                         {joinedLiveId === room.id ? (
                           <div className="relative mt-3 overflow-hidden rounded-2xl bg-black text-white" onClick={() => sendLiveTap(room.id)}>
-                            <div className={`grid gap-2 p-2 ${liveTileCount(room) > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
-                              {shouldShowLocalLiveTile(room) ? (
-                                <LiveVideoTile stream={localLiveStream} label="Vous" muted />
-                              ) : null}
-                              {remoteLiveEntries.map(([remoteUserId, stream]) => (
-                                <LiveVideoTile
-                                  key={remoteUserId}
-                                  stream={stream}
-                                  label={liveDisplayName(room, remoteUserId, user?.id)}
-                                />
-                              ))}
-                              {liveTileCount(room) === 0 ? (
-                                <LiveVideoTile stream={null} label="Live" />
-                              ) : null}
+                            <div className="grid gap-2 p-2 md:grid-cols-[minmax(0,1fr)_minmax(160px,220px)]">
+                              <LiveVideoTile
+                                stream={liveHostStream(room)}
+                                label={room.hostId === user?.id ? 'Vous (hôte)' : `${room.host.name} (hôte)`}
+                                muted={room.hostId === user?.id}
+                                emptyText="Connexion au flux de l’hôte…"
+                              />
+                              <div className="grid max-h-56 grid-cols-2 gap-2 overflow-y-auto md:max-h-[62vh] md:grid-cols-1">
+                                {liveSecondaryTiles(room).map((tile) => (
+                                  <LiveVideoTile
+                                    key={tile.id}
+                                    stream={tile.stream}
+                                    label={tile.label}
+                                    muted={tile.muted}
+                                    size="small"
+                                  />
+                                ))}
+                                {liveSecondaryTiles(room).length === 0 ? (
+                                  <div className="flex min-h-32 items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-3 text-center text-xs text-white/70">
+                                    Les personnes montées apparaîtront ici.
+                                  </div>
+                                ) : null}
+                              </div>
                             </div>
                             {liveTapBursts
                               .filter((burst) => burst.roomId === room.id)

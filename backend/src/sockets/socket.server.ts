@@ -192,6 +192,15 @@ async function handleConnection(io: Server, socket: Socket): Promise<void> {
     }
   });
 
+  socket.on("live:request_streams", (payload: unknown) => {
+    try {
+      const { roomId } = liveRoomSchema.parse(payload);
+      socket.to(`live:${roomId}`).emit("live:request_streams", { roomId, fromUserId: userId });
+    } catch {
+      /* ignore */
+    }
+  });
+
   socket.on("live:invite", (payload: unknown, ack?: (r: unknown) => void) => {
     void (async () => {
       try {

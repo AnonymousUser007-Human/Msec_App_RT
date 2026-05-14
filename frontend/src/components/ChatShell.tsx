@@ -124,6 +124,7 @@ export function ChatShell() {
   const [coHostingLiveId, setCoHostingLiveId] = useState<string | null>(null)
   const [localLiveStream, setLocalLiveStream] = useState<MediaStream | null>(null)
   const [remoteLiveStreams, setRemoteLiveStreams] = useState<Record<string, MediaStream>>({})
+  const [liveCohostIds, setLiveCohostIds] = useState<Record<string, string[]>>({})
   const [liveInviteTargetByRoom, setLiveInviteTargetByRoom] = useState<Record<string, string>>({})
   const [liveRaiseRequests, setLiveRaiseRequests] = useState<Record<string, LiveRaiseRequest[]>>({})
   const [liveTapBursts, setLiveTapBursts] = useState<LiveTapBurst[]>([])
@@ -428,36 +429,58 @@ export function ChatShell() {
     }
   }, [])
 
+  const markLiveCohost = useCallback((roomId: string, userId: string) => {
+    setLiveCohostIds((prev) => {
+      const current = prev[roomId] ?? []
+      if (current.includes(userId)) return prev
+      return { ...prev, [roomId]: [...current, userId] }
+    })
+  }, [])
+
+  const sendLocalLiveOffer = useCallback(
+    async (roomId: string, targetUserId: string) => {
+      if (!socket || targetUserId === userRef.current?.id) return
+      const stream = localLiveStreamRef.current
+      if (!stream) return
+      let pc = livePeerConnectionsRef.current[targetUserId]
+      if (!pc) {
+        pc = createLivePeerConnection(roomId, targetUserId)
+      }
+      addStreamTracksToPeer(pc, stream)
+      const offer = await pc.createOffer()
+      await pc.setLocalDescription(offer)
+      socket.emit('live:signal', {
+        roomId,
+        targetUserId,
+        signal: { type: 'offer', sdp: offer } satisfies LiveSignal,
+      })
+    },
+    [socket, createLivePeerConnection],
+  )
+
   const startCoHosting = useCallback(
     async (roomId: string, hostId: string) => {
       if (!socket) return
-      const stream = await getLocalLiveStream()
+      const currentUserId = userRef.current?.id
+      if (!currentUserId) return
+      await getLocalLiveStream()
       coHostingLiveIdRef.current = roomId
       setCoHostingLiveId(roomId)
+      markLiveCohost(roomId, currentUserId)
       const room = liveRoomsRef.current.find((item) => item.id === roomId)
       const targetIds = new Set([
         hostId,
         ...(room?.participants.map((participant) => participant.id) ?? []),
       ])
-      targetIds.delete(userRef.current?.id ?? '')
+      targetIds.delete(currentUserId)
 
       for (const targetUserId of targetIds) {
-        let pc = livePeerConnectionsRef.current[targetUserId]
-        if (!pc) {
-          pc = createLivePeerConnection(roomId, targetUserId)
-        }
-        addStreamTracksToPeer(pc, stream)
-        const offer = await pc.createOffer()
-        await pc.setLocalDescription(offer)
-        socket.emit('live:signal', {
-          roomId,
-          targetUserId,
-          signal: { type: 'offer', sdp: offer } satisfies LiveSignal,
-        })
+        await sendLocalLiveOffer(roomId, targetUserId)
       }
+      socket.emit('live:request_streams', { roomId })
       toast.success('Vous êtes monté dans le live')
     },
-    [socket, getLocalLiveStream, createLivePeerConnection],
+    [socket, getLocalLiveStream, markLiveCohost, sendLocalLiveOffer],
   )
 
   useEffect(() => {
@@ -482,17 +505,8 @@ export function ChatShell() {
       }
       const canSendLocalStream = hostingLiveIdRef.current === p.roomId || coHostingLiveIdRef.current === p.roomId
       if (!canSendLocalStream) return
-      const stream = localLiveStreamRef.current
-      if (!stream) return
       try {
-        const pc = createLivePeerConnection(p.roomId, p.userId, stream)
-        const offer = await pc.createOffer()
-        await pc.setLocalDescription(offer)
-        socket.emit('live:signal', {
-          roomId: p.roomId,
-          targetUserId: p.userId,
-          signal: { type: 'offer', sdp: offer } satisfies LiveSignal,
-        })
+        await sendLocalLiveOffer(p.roomId, p.userId)
       } catch (err) {
         toast.error(err instanceof Error ? err.message : 'Connexion live impossible')
       }
@@ -506,6 +520,11 @@ export function ChatShell() {
         delete next[p.userId]
         return next
       })
+      setLiveCohostIds((prev) => {
+        const current = prev[p.roomId] ?? []
+        if (!current.includes(p.userId)) return prev
+        return { ...prev, [p.roomId]: current.filter((id) => id !== p.userId) }
+      })
       setLiveRooms((prev) =>
         prev.map((room) => {
           if (room.id !== p.roomId) return room
@@ -516,7 +535,11 @@ export function ChatShell() {
     }
 
     const onLiveSignal = async (p: { roomId: string; fromUserId: string; signal: LiveSignal }) => {
-      if (joinedLiveIdRef.current !== p.roomId && hostingLiveIdRef.current !== p.roomId) return
+      if (
+        joinedLiveIdRef.current !== p.roomId &&
+        hostingLiveIdRef.current !== p.roomId &&
+        coHostingLiveIdRef.current !== p.roomId
+      ) return
       try {
         let pc = livePeerConnectionsRef.current[p.fromUserId]
         if (!pc) {
@@ -574,6 +597,15 @@ export function ChatShell() {
       addLiveTapBurst(p.roomId, p.count ?? 1)
     }
 
+    const onLiveRequestStreams = (p: { roomId: string; fromUserId: string }) => {
+      if (p.fromUserId === userRef.current?.id) return
+      const canSendLocalStream = hostingLiveIdRef.current === p.roomId || coHostingLiveIdRef.current === p.roomId
+      if (!canSendLocalStream || !localLiveStreamRef.current) return
+      void sendLocalLiveOffer(p.roomId, p.fromUserId).catch((err) => {
+        console.warn('[live] stream request failed', err)
+      })
+    }
+
     const onRaiseRequest = (p: LiveRaiseRequest) => {
       if (hostingLiveIdRef.current !== p.roomId) return
       setLiveRaiseRequests((prev) => {
@@ -599,6 +631,7 @@ export function ChatShell() {
     }
 
     const onCohostStarted = (p: { roomId: string; userId: string; user?: LiveUser | null }) => {
+      markLiveCohost(p.roomId, p.userId)
       if (p.user) {
         const cohost = p.user
         setLiveRooms((prev) =>
@@ -612,11 +645,13 @@ export function ChatShell() {
       if (joinedLiveIdRef.current === p.roomId || hostingLiveIdRef.current === p.roomId) {
         toast.message('Un invité est monté dans le live')
       }
+      socket.emit('live:request_streams', { roomId: p.roomId })
     }
 
     socket.on('live:viewer_joined', onViewerJoined)
     socket.on('live:viewer_left', onViewerLeft)
     socket.on('live:signal', onLiveSignal)
+    socket.on('live:request_streams', onLiveRequestStreams)
     socket.on('live:invite', onLiveInvite)
     socket.on('live:tap', onLiveTap)
     socket.on('live:raise_request', onRaiseRequest)
@@ -626,13 +661,14 @@ export function ChatShell() {
       socket.off('live:viewer_joined', onViewerJoined)
       socket.off('live:viewer_left', onViewerLeft)
       socket.off('live:signal', onLiveSignal)
+      socket.off('live:request_streams', onLiveRequestStreams)
       socket.off('live:invite', onLiveInvite)
       socket.off('live:tap', onLiveTap)
       socket.off('live:raise_request', onRaiseRequest)
       socket.off('live:raise_approved', onRaiseApproved)
       socket.off('live:cohost_started', onCohostStarted)
     }
-  }, [socket, createLivePeerConnection, flushPendingIceCandidates, loadLiveRooms, addLiveTapBurst, startCoHosting])
+  }, [socket, createLivePeerConnection, flushPendingIceCandidates, loadLiveRooms, addLiveTapBurst, startCoHosting, sendLocalLiveOffer, markLiveCohost])
 
   useEffect(() => {
     return () => resetLiveMedia()
@@ -707,6 +743,7 @@ export function ChatShell() {
     setHostingLiveId(null)
     setJoinedLiveId(roomId)
     socket?.emit('live:join', { roomId })
+    socket?.emit('live:request_streams', { roomId })
     await loadLiveRooms()
   }
 
@@ -721,6 +758,7 @@ export function ChatShell() {
       setJoinedLiveId(roomId)
       setCoHostingLiveId(null)
       socket?.emit('live:join', { roomId })
+      socket?.emit('live:request_streams', { roomId })
       await loadLiveRooms()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Impossible de reprendre le live')
@@ -736,6 +774,11 @@ export function ChatShell() {
     if (hostingLiveId === roomId) setHostingLiveId(null)
     socket?.emit('live:leave', { roomId })
     resetLiveMedia()
+    setLiveCohostIds((prev) => {
+      const next = { ...prev }
+      delete next[roomId]
+      return next
+    })
     await loadLiveRooms()
   }
 
@@ -748,6 +791,11 @@ export function ChatShell() {
     setHostingLiveId((id) => (id === roomId ? null : id))
     socket?.emit('live:leave', { roomId })
     resetLiveMedia()
+    setLiveCohostIds((prev) => {
+      const next = { ...prev }
+      delete next[roomId]
+      return next
+    })
     await loadLiveRooms()
   }
 
@@ -809,7 +857,7 @@ export function ChatShell() {
   const liveHostStream = (room: LiveRoom) =>
     room.hostId === user?.id ? localLiveStream : (remoteLiveStreams[room.hostId] ?? null)
   const liveSecondaryTiles = (room: LiveRoom) => {
-    const tiles = remoteLiveEntries
+    const tiles: Array<{ id: string; label: string; stream: MediaStream | null; muted: boolean }> = remoteLiveEntries
       .filter(([remoteUserId]) => remoteUserId !== room.hostId)
       .map(([remoteUserId, stream]) => ({
         id: remoteUserId,
@@ -817,6 +865,16 @@ export function ChatShell() {
         stream,
         muted: false,
       }))
+
+    for (const cohostId of liveCohostIds[room.id] ?? []) {
+      if (cohostId === room.hostId || cohostId === user?.id || tiles.some((tile) => tile.id === cohostId)) continue
+      tiles.push({
+        id: cohostId,
+        label: liveDisplayName(room, cohostId, user?.id),
+        stream: null,
+        muted: false,
+      })
+    }
 
     if (shouldShowLocalLiveTile(room) && room.hostId !== user?.id) {
       tiles.unshift({ id: 'local', label: 'Vous', stream: localLiveStream!, muted: true })

@@ -1,12 +1,31 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
+import { toast } from 'sonner'
 import type { Socket } from 'socket.io-client'
 import { useAuth } from '../context/AuthContext'
 import type { Conversation, Message } from '../lib/types'
-import { getJson, postJson } from '../lib/api'
+import { getJson, postFormData, postJson } from '../lib/api'
 import { otherMember } from '../lib/conversation'
 import { formatMessageTime, initials, mediaUrl } from '../lib/format'
 import { ThemeToggle } from './ThemeToggle'
 import { HeaderAlertsMenu } from './HeaderAlertsMenu'
+
+function fileProvenanceLine(m: Message, viewerId: string): string | null {
+  if (m.type === 'text') return null
+  if (m.isFirstIntroduction === true) {
+    return 'Premier dépôt de ce fichier dans cette discussion.'
+  }
+  const orig = m.originalSubmitter
+  if (orig && orig.id !== m.senderId) {
+    return `Même fichier : premier dépôt par ${orig.name}.`
+  }
+  if (orig && orig.id === m.senderId && m.senderId === viewerId) {
+    return 'Vous renvoyez ce fichier — vous en restez le premier déposant dans ce fil.'
+  }
+  if (orig && orig.id === m.senderId) {
+    return `${orig.name} renvoie ce fichier (premier dépôt par cette personne).`
+  }
+  return null
+}
 
 type Props = {
   conversation: Conversation
@@ -24,8 +43,10 @@ export function ChatThread({ conversation, socket, onConversationUpdated, onMobi
   const [typingName, setTypingName] = useState<string | null>(null)
   const bottomRef = useRef<HTMLDivElement | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const attachmentRef = useRef<HTMLInputElement | null>(null)
   const typingStopTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const typingStartSent = useRef(false)
+  const [uploadingAttachment, setUploadingAttachment] = useState(false)
 
   const other = user ? otherMember(conversation, user.id) : undefined
 
@@ -176,6 +197,33 @@ export function ChatThread({ conversation, socket, onConversationUpdated, onMobi
     void sendText()
   }
 
+  const onAttachmentFileSelected = useCallback(
+    async (e: ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0]
+      e.target.value = ''
+      if (!file || !token) return
+      setUploadingAttachment(true)
+      sendTypingStop()
+      try {
+        const fd = new FormData()
+        fd.append('file', file)
+        const msg = await postFormData<Message>(
+          `/api/conversations/${conversation.id}/messages/upload`,
+          fd,
+          token,
+        )
+        setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]))
+        requestAnimationFrame(scrollToBottom)
+        onConversationUpdated()
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Envoi du fichier impossible')
+      } finally {
+        setUploadingAttachment(false)
+      }
+    },
+    [token, conversation.id, sendTypingStop, scrollToBottom, onConversationUpdated],
+  )
+
   const statusLabel = (m: Message, mine: boolean) => {
     if (!mine) return null
     if (m.status === 'read') return 'Lu'
@@ -226,6 +274,7 @@ export function ChatThread({ conversation, socket, onConversationUpdated, onMobi
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-y-contain px-4 pb-2 pt-4 md:pb-4">
         {messages.map((m) => {
           const mine = m.senderId === user.id
+          const provenance = fileProvenanceLine(m, user.id)
           return (
             <div key={m.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
               <div
@@ -251,6 +300,15 @@ export function ChatThread({ conversation, socket, onConversationUpdated, onMobi
                 ) : (
                   <p className="whitespace-pre-wrap break-words">{m.content}</p>
                 )}
+                {provenance ? (
+                  <p
+                    className={`mt-2 rounded-lg px-2 py-1.5 text-[11px] leading-snug ${
+                      mine ? 'bg-white/15 text-white/95' : 'bg-[var(--sc-muted-bg)] text-[var(--sc-text-muted)]'
+                    }`}
+                  >
+                    {provenance}
+                  </p>
+                ) : null}
                 <div
                   className={`mt-1 flex items-center justify-end gap-2 text-[10px] ${mine ? 'text-white/80' : 'text-[var(--sc-text-muted)]'}`}
                 >
@@ -272,17 +330,42 @@ export function ChatThread({ conversation, socket, onConversationUpdated, onMobi
         className="shrink-0 border-t border-[var(--sc-border)] bg-[var(--sc-header)] px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 md:p-3 md:pb-[max(0.75rem,env(safe-area-inset-bottom))]"
       >
         <div className="flex flex-col gap-2 min-[400px]:flex-row min-[400px]:items-end">
-          <textarea
-            ref={textareaRef}
-            className="min-h-[44px] w-full flex-1 resize-none rounded-2xl border border-[var(--sc-border)] bg-[var(--sc-input-bg)] px-3 py-2.5 text-base leading-snug text-[var(--sc-text)] outline-none placeholder:text-[var(--sc-text-muted)] focus:border-[var(--sc-orange)] focus:ring-2 focus:ring-orange-500/25 sm:text-sm"
-            rows={1}
-            placeholder="Écrivez un message…"
-            value={input}
-            onChange={(e) => onInputChange(e.target.value)}
-          />
+          <div className="flex min-h-0 min-w-0 flex-1 items-end gap-2">
+            <input
+              ref={attachmentRef}
+              type="file"
+              className="hidden"
+              accept="image/*,.pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              onChange={onAttachmentFileSelected}
+            />
+            <button
+              type="button"
+              disabled={uploadingAttachment || sending || !token}
+              onClick={() => attachmentRef.current?.click()}
+              aria-label="Joindre un fichier"
+              title="Joindre un fichier"
+              className="mb-0.5 flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-2xl border border-[var(--sc-border)] bg-[var(--sc-input-bg)] text-[var(--sc-text)] transition hover:border-[var(--sc-orange)] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {uploadingAttachment ? (
+                <span className="h-5 w-5 animate-spin rounded-full border-2 border-[var(--sc-orange)] border-t-transparent" aria-hidden />
+              ) : (
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                </svg>
+              )}
+            </button>
+            <textarea
+              ref={textareaRef}
+              className="min-h-[44px] min-w-0 flex-1 resize-none rounded-2xl border border-[var(--sc-border)] bg-[var(--sc-input-bg)] px-3 py-2.5 text-base leading-snug text-[var(--sc-text)] outline-none placeholder:text-[var(--sc-text-muted)] focus:border-[var(--sc-orange)] focus:ring-2 focus:ring-orange-500/25 sm:text-sm"
+              rows={1}
+              placeholder="Écrivez un message…"
+              value={input}
+              onChange={(e) => onInputChange(e.target.value)}
+            />
+          </div>
           <button
             type="submit"
-            disabled={sending || !input.trim()}
+            disabled={sending || uploadingAttachment || !input.trim()}
             className="h-11 shrink-0 cursor-pointer rounded-2xl bg-[var(--sc-orange)] px-4 text-sm font-semibold text-white transition hover:bg-[var(--sc-orange-hover)] disabled:cursor-not-allowed disabled:opacity-50 min-[400px]:h-auto min-[400px]:py-2.5"
           >
             Envoyer

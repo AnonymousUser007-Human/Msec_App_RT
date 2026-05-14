@@ -36,10 +36,12 @@ model User {
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
 
-  sentMessages        Message[]              @relation("SentMessages")
-  conversationMembers ConversationMember[]
-  messageHides        MessageUserHide[]
-  pushSubscriptions   PushSubscription[]
+  sentMessages              Message[]                 @relation("SentMessages")
+  messagesAsOriginalSource  Message[]                 @relation("MessageOriginalSubmitter")
+  conversationMembers     ConversationMember[]
+  messageHides              MessageUserHide[]
+  pushSubscriptions         PushSubscription[]
+  conversationFileFirstSent ConversationFileOrigin[]  @relation("FileFirstSender")
 
   @@map("users")
 }
@@ -50,8 +52,9 @@ model Conversation {
   createdAt DateTime         @default(now()) @map("created_at")
   updatedAt DateTime         @updatedAt @map("updated_at")
 
-  members  ConversationMember[]
-  messages Message[]
+  members   ConversationMember[]
+  messages  Message[]
+  fileOrigins ConversationFileOrigin[]
 
   @@map("conversations")
 }
@@ -70,22 +73,49 @@ model ConversationMember {
 }
 
 model Message {
-  id             String        @id @default(cuid())
-  conversationId String        @map("conversation_id")
-  senderId       String        @map("sender_id")
-  content        String        @db.Text
-  type           MessageType   @default(text)
-  status         MessageStatus @default(sent)
-  createdAt      DateTime      @default(now()) @map("created_at")
-  updatedAt      DateTime      @updatedAt @map("updated_at")
-  deletedAt      DateTime?     @map("deleted_at")
+  id                                String        @id @default(cuid())
+  conversationId                  String        @map("conversation_id")
+  senderId                        String        @map("sender_id")
+  content                         String        @db.Text
+  type                            MessageType   @default(text)
+  status                          MessageStatus @default(sent)
+  createdAt                       DateTime      @default(now()) @map("created_at")
+  updatedAt                       DateTime      @updatedAt @map("updated_at")
+  deletedAt                       DateTime?     @map("deleted_at")
+  /** Empreinte SHA-256 du fichier (pièces jointes locales uniquement). */
+  fileContentHash                 String?       @map("file_content_hash") @db.VarChar(64)
+  /** Premier utilisateur ayant introduit ce contenu dans la conversation (même hash). */
+  originalSubmitterId             String?       @map("original_submitter_id")
+  /** Ce message est le tout premier dépôt de ce fichier dans ce fil. */
+  isFirstIntroductionInConversation Boolean     @default(false) @map("is_first_introduction")
 
-  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  sender       User         @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
-  hides        MessageUserHide[]
+  conversation       Conversation          @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender               User                  @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  originalSubmitter    User?                 @relation("MessageOriginalSubmitter", fields: [originalSubmitterId], references: [id], onDelete: SetNull)
+  hides                MessageUserHide[]
+  fileFirstIntroduction ConversationFileOrigin? @relation("FirstFileIntroduction")
 
   @@index([conversationId, createdAt])
+  @@index([conversationId, fileContentHash])
   @@map("messages")
+}
+
+/** Première introduction d’un fichier (hash) dans une conversation — permet de reconnaître les re-dépôts. */
+model ConversationFileOrigin {
+  id               String   @id @default(cuid())
+  conversationId   String   @map("conversation_id")
+  contentHash      String   @map("content_hash") @db.VarChar(64)
+  firstMessageId   String   @unique @map("first_message_id")
+  firstSenderId    String   @map("first_sender_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  firstMessage   Message      @relation("FirstFileIntroduction", fields: [firstMessageId], references: [id], onDelete: Cascade)
+  firstSender    User         @relation("FileFirstSender", fields: [firstSenderId], references: [id], onDelete: Restrict)
+
+  @@unique([conversationId, contentHash])
+  @@index([conversationId])
+  @@map("conversation_file_origins")
 }
 
 model MessageUserHide {

@@ -1,4 +1,5 @@
 import type { Request, Response, NextFunction } from "express";
+import path from "path";
 import { createConversationSchema, listMessagesQuerySchema, createMessageSchema } from "./conversation.schema.js";
 import * as convService from "./conversation.service.js";
 import { env } from "../../config/env.js";
@@ -62,7 +63,12 @@ export async function postMessageUpload(req: Request, res: Response, next: NextF
     const base = env.PUBLIC_BASE_URL?.replace(/\/$/, "");
     const content = base ? `${base}${publicPath}` : publicPath;
     const type = req.file.mimetype.startsWith("image/") ? ("image" as const) : ("file" as const);
-    const msg = await convService.createMessage(req.user!.id, routeParam(req, "id"), { content, type });
+    const msg = await convService.createMessageFromUploadedFile(
+      req.user!.id,
+      routeParam(req, "id"),
+      { content, type },
+      path.join(process.cwd(), "uploads", req.file.filename),
+    );
     res.status(201).json(msg);
   } catch (e) {
     next(e);

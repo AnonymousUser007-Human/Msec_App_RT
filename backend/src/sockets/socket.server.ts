@@ -45,15 +45,23 @@ export function registerSocketHandlers(io: Server): void {
 
 async function handleConnection(io: Server, socket: Socket): Promise<void> {
   const userId = socket.data.userId as string;
+  const userExists = await prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
+  if (!userExists) {
+    socket.disconnect(true);
+    return;
+  }
+
   const first = trackSocketConnect(userId, socket.id);
   socket.join(`user:${userId}`);
 
   if (first) {
-    await prisma.user.update({
+    const r = await prisma.user.updateMany({
       where: { id: userId },
       data: { isOnline: true, lastSeen: new Date() },
     });
-    socket.broadcast.emit("user:online", { userId });
+    if (r.count > 0) {
+      socket.broadcast.emit("user:online", { userId });
+    }
   }
 
   socket.on("conversation:join", (payload: unknown, ack?: (r: unknown) => void) => {
@@ -123,11 +131,13 @@ async function handleConnection(io: Server, socket: Socket): Promise<void> {
   socket.on("disconnect", async () => {
     const fullyLeft = trackSocketDisconnect(userId, socket.id);
     if (fullyLeft) {
-      await prisma.user.update({
+      const r = await prisma.user.updateMany({
         where: { id: userId },
         data: { isOnline: false, lastSeen: new Date() },
       });
-      socket.broadcast.emit("user:offline", { userId });
+      if (r.count > 0) {
+        socket.broadcast.emit("user:offline", { userId });
+      }
     }
   });
 }

@@ -2,15 +2,118 @@ import { ConversationType, MessageStatus, Prisma } from "@prisma/client";
 import { prisma } from "../../config/prisma.js";
 import { HttpError } from "../../utils/httpError.js";
 import * as userService from "../users/user.service.js";
-import { messageToDto } from "./message.dto.js";
+import { messageToDto, type MessageWithOrigin } from "./message.dto.js";
 import type { z } from "zod";
 import type { createConversationSchema, listMessagesQuerySchema, createMessageSchema } from "./conversation.schema.js";
 import { getSocketIO } from "../../sockets/io.js";
 import { buildPushMessageBody, notifyRecipientsOfNewMessage } from "../push/push.service.js";
+import { computeFileHashFromMessageContent, sha256File } from "./conversation.fileHash.js";
 
 type CreateConv = z.infer<typeof createConversationSchema>;
 type ListMsgQuery = z.infer<typeof listMessagesQuerySchema>;
 type CreateMsg = z.infer<typeof createMessageSchema>;
+
+const messageOriginInclude = {
+  originalSubmitter: { select: { id: true, name: true, avatar: true } },
+} as const;
+
+async function broadcastNewMessage(msg: MessageWithOrigin, userId: string, conversationId: string) {
+  const dto = messageToDto(msg);
+  const io = getSocketIO();
+  io?.to(`conversation:${conversationId}`).emit("message:new", dto);
+
+  const recipients = await prisma.conversationMember.findMany({
+    where: { conversationId, userId: { not: userId } },
+    select: { userId: true },
+  });
+  for (const r of recipients) {
+    io?.to(`user:${r.userId}`).emit("message:new", dto);
+  }
+
+  const senderRow = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
+  void notifyRecipientsOfNewMessage(
+    recipients.map((r) => r.userId),
+    {
+      senderName: senderRow?.name ?? "Contact",
+      conversationId,
+      body: buildPushMessageBody(dto),
+    },
+  ).catch(() => {});
+
+  return dto;
+}
+
+async function persistMessageWithOrigin(
+  userId: string,
+  conversationId: string,
+  input: CreateMsg,
+  fileMeta?: { contentHash: string },
+) {
+  await assertConversationMember(userId, conversationId);
+  const include = messageOriginInclude;
+
+  if (!fileMeta || input.type === "text") {
+    const msg = await prisma.message.create({
+      data: {
+        conversationId,
+        senderId: userId,
+        content: input.content,
+        type: input.type,
+        status: MessageStatus.sent,
+      },
+      include,
+    });
+    await prisma.conversation.update({
+      where: { id: conversationId },
+      data: { updatedAt: new Date() },
+    });
+    return broadcastNewMessage(msg as MessageWithOrigin, userId, conversationId);
+  }
+
+  const msg = await prisma.$transaction(async (tx) => {
+    const existing = await tx.conversationFileOrigin.findUnique({
+      where: {
+        conversationId_contentHash: { conversationId, contentHash: fileMeta.contentHash },
+      },
+    });
+    const originalSubmitterId = existing ? existing.firstSenderId : userId;
+    const isFirstIntroductionInConversation = !existing;
+
+    const created = await tx.message.create({
+      data: {
+        conversationId,
+        senderId: userId,
+        content: input.content,
+        type: input.type,
+        status: MessageStatus.sent,
+        fileContentHash: fileMeta.contentHash,
+        originalSubmitterId,
+        isFirstIntroductionInConversation,
+      },
+      include,
+    });
+
+    if (isFirstIntroductionInConversation) {
+      await tx.conversationFileOrigin.create({
+        data: {
+          conversationId,
+          contentHash: fileMeta.contentHash,
+          firstMessageId: created.id,
+          firstSenderId: userId,
+        },
+      });
+    }
+
+    await tx.conversation.update({
+      where: { id: conversationId },
+      data: { updatedAt: new Date() },
+    });
+
+    return created;
+  });
+
+  return broadcastNewMessage(msg as MessageWithOrigin, userId, conversationId);
+}
 
 export async function assertConversationMember(userId: string, conversationId: string) {
   const m = await prisma.conversationMember.findFirst({
@@ -66,7 +169,10 @@ async function lastMessageFor(userId: string, conversationId: string) {
       hides: { none: { userId } },
     },
     orderBy: { createdAt: "desc" },
-    include: { sender: { select: { id: true, name: true, avatar: true } } },
+    include: {
+      sender: { select: { id: true, name: true, avatar: true } },
+      ...messageOriginInclude,
+    },
   });
 }
 
@@ -118,7 +224,7 @@ export async function getConversationDto(userId: string, conversationId: string)
     members: conv.members.map((m) => userService.toPublicUser(m.user)),
     lastMessage: last
       ? {
-          ...messageToDto(last),
+          ...messageToDto(last as MessageWithOrigin),
           sender: { id: last.sender.id, name: last.sender.name, avatar: last.sender.avatar },
         }
       : null,
@@ -162,7 +268,7 @@ export async function listConversations(userId: string) {
         members: c.members.map((m) => userService.toPublicUser(m.user)),
         lastMessage: last
           ? {
-              ...messageToDto(last),
+              ...messageToDto(last as MessageWithOrigin),
               sender: { id: last.sender.id, name: last.sender.name, avatar: last.sender.avatar },
             }
           : null,
@@ -190,6 +296,7 @@ export async function listMessages(userId: string, conversationId: string, query
     where,
     orderBy: { createdAt: "desc" },
     take,
+    include: messageOriginInclude,
   });
 
   const hasMore = rows.length > query.limit;
@@ -197,52 +304,28 @@ export async function listMessages(userId: string, conversationId: string, query
   const nextCursor = hasMore ? items[items.length - 1]!.createdAt.toISOString() : undefined;
 
   return {
-    data: items.map(messageToDto).reverse(),
+    data: items.map((row) => messageToDto(row as MessageWithOrigin)).reverse(),
     nextCursor,
   };
 }
 
 export async function createMessage(userId: string, conversationId: string, input: CreateMsg) {
-  await assertConversationMember(userId, conversationId);
-
-  const msg = await prisma.message.create({
-    data: {
-      conversationId,
-      senderId: userId,
-      content: input.content,
-      type: input.type,
-      status: MessageStatus.sent,
-    },
-  });
-
-  await prisma.conversation.update({
-    where: { id: conversationId },
-    data: { updatedAt: new Date() },
-  });
-
-  const dto = messageToDto(msg);
-  const io = getSocketIO();
-  io?.to(`conversation:${conversationId}`).emit("message:new", dto);
-
-  const recipients = await prisma.conversationMember.findMany({
-    where: { conversationId, userId: { not: userId } },
-    select: { userId: true },
-  });
-  for (const r of recipients) {
-    io?.to(`user:${r.userId}`).emit("message:new", dto);
+  let fileMeta: { contentHash: string } | undefined;
+  if (input.type !== "text") {
+    const hash = await computeFileHashFromMessageContent(input.content);
+    if (hash) fileMeta = { contentHash: hash };
   }
+  return persistMessageWithOrigin(userId, conversationId, input, fileMeta);
+}
 
-  const senderRow = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
-  void notifyRecipientsOfNewMessage(
-    recipients.map((r) => r.userId),
-    {
-      senderName: senderRow?.name ?? "Contact",
-      conversationId,
-      body: buildPushMessageBody(dto),
-    },
-  ).catch(() => {});
-
-  return dto;
+export async function createMessageFromUploadedFile(
+  userId: string,
+  conversationId: string,
+  input: CreateMsg,
+  absoluteFilePath: string,
+) {
+  const contentHash = await sha256File(absoluteFilePath);
+  return persistMessageWithOrigin(userId, conversationId, input, { contentHash });
 }
 
 export async function markConversationRead(userId: string, conversationId: string) {

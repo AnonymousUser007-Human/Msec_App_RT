@@ -21,6 +21,10 @@ export type Message = {
   createdAt: string
   updatedAt: string
   deletedAt: string | null
+  /** Premier utilisateur ayant introduit ce fichier (même contenu binaire) dans la conversation. */
+  originalSubmitter?: { id: string; name: string; avatar: string | null } | null
+  /** True si ce message est le tout premier dépôt de ce fichier dans ce fil. */
+  isFirstIntroduction?: boolean
 }
 
 export type LastMessage = Message & {

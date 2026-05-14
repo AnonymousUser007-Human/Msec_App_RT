@@ -25,6 +25,8 @@ export const uploadMiddleware = multer({
   fileFilter: (_req, file, cb) => {
     const okMime =
       file.mimetype.startsWith("image/") ||
+      file.mimetype.startsWith("audio/") ||
+      file.mimetype.startsWith("video/") ||
       file.mimetype === "application/pdf" ||
       file.mimetype === "application/msword" ||
       file.mimetype === "application/vnd.openxmlformats-officedocument.wordprocessingml.document";

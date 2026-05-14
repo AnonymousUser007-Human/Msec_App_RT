@@ -11,18 +11,30 @@ export type User = {
 
 export type MessageStatus = 'sent' | 'delivered' | 'read'
 
+export type MessageReference = {
+  id: string
+  senderId: string
+  content: string
+  type: 'text' | 'image' | 'audio' | 'video' | 'file'
+  attachmentName: string | null
+  sender: { id: string; name: string; avatar: string | null } | null
+}
+
 export type Message = {
   id: string
   conversationId: string
   senderId: string
   content: string
-  type: 'text' | 'image' | 'file'
+  type: 'text' | 'image' | 'audio' | 'video' | 'file'
+  attachmentName: string | null
   status: MessageStatus
   createdAt: string
   updatedAt: string
   deletedAt: string | null
   /** Premier utilisateur ayant introduit ce fichier (même contenu binaire) dans la conversation. */
   originalSubmitter?: { id: string; name: string; avatar: string | null } | null
+  replyTo?: MessageReference | null
+  forwardedFrom?: MessageReference | null
   /** True si ce message est le tout premier dépôt de ce fichier dans ce fil. */
   isFirstIntroduction?: boolean
 }

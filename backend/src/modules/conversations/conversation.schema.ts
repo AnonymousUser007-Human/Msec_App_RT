@@ -11,5 +11,7 @@ export const listMessagesQuerySchema = z.object({
 
 export const createMessageSchema = z.object({
   content: z.string().min(1).max(20000),
-  type: z.enum(["text", "image", "file"]).default("text"),
+  type: z.enum(["text", "image", "audio", "video", "file"]).default("text"),
+  attachmentName: z.string().min(1).max(255).optional(),
+  replyToId: z.string().min(1).optional(),
 });

@@ -1,8 +1,8 @@
 import type { Request, Response, NextFunction } from "express";
 import path from "path";
+import { z } from "zod";
 import { createConversationSchema, listMessagesQuerySchema, createMessageSchema } from "./conversation.schema.js";
 import * as convService from "./conversation.service.js";
-import { env } from "../../config/env.js";
 import { HttpError } from "../../utils/httpError.js";
 import { routeParam } from "../../utils/routeParam.js";
 
@@ -59,14 +59,19 @@ export async function postMessageUpload(req: Request, res: Response, next: NextF
     if (!req.file) {
       throw new HttpError(400, "Fichier requis");
     }
+    const body = z.object({ replyToId: z.string().min(1).optional() }).parse(req.body);
     const publicPath = `/uploads/${req.file.filename}`;
-    const base = env.PUBLIC_BASE_URL?.replace(/\/$/, "");
-    const content = base ? `${base}${publicPath}` : publicPath;
-    const type = req.file.mimetype.startsWith("image/") ? ("image" as const) : ("file" as const);
+    const type = req.file.mimetype.startsWith("image/")
+      ? ("image" as const)
+      : req.file.mimetype.startsWith("audio/")
+        ? ("audio" as const)
+        : req.file.mimetype.startsWith("video/")
+          ? ("video" as const)
+          : ("file" as const);
     const msg = await convService.createMessageFromUploadedFile(
       req.user!.id,
       routeParam(req, "id"),
-      { content, type },
+      { content: publicPath, type, attachmentName: req.file.originalname, replyToId: body.replyToId },
       path.join(process.cwd(), "uploads", req.file.filename),
     );
     res.status(201).json(msg);

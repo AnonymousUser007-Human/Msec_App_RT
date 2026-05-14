@@ -3,7 +3,17 @@ import { API_ORIGIN } from './config'
 /** Préfixe les chemins relatifs `/uploads` avec l’origine du backend. */
 export function mediaUrl(pathOrUrl: string | null | undefined): string | undefined {
   if (!pathOrUrl) return undefined
-  if (pathOrUrl.startsWith('http://') || pathOrUrl.startsWith('https://')) return pathOrUrl
+  if (pathOrUrl.startsWith('http://') || pathOrUrl.startsWith('https://')) {
+    try {
+      const u = new URL(pathOrUrl)
+      if (u.pathname.startsWith('/uploads/')) {
+        return API_ORIGIN ? `${API_ORIGIN}${u.pathname}${u.search}` : `${u.pathname}${u.search}`
+      }
+    } catch {
+      return pathOrUrl
+    }
+    return pathOrUrl
+  }
   const p = pathOrUrl.startsWith('/') ? pathOrUrl : `/${pathOrUrl}`
   return API_ORIGIN ? `${API_ORIGIN}${p}` : p
 }

@@ -15,6 +15,26 @@ type CreateMsg = z.infer<typeof createMessageSchema>;
 
 const messageOriginInclude = {
   originalSubmitter: { select: { id: true, name: true, avatar: true } },
+  replyTo: {
+    select: {
+      id: true,
+      senderId: true,
+      content: true,
+      type: true,
+      attachmentName: true,
+      sender: { select: { id: true, name: true, avatar: true } },
+    },
+  },
+  forwardedFrom: {
+    select: {
+      id: true,
+      senderId: true,
+      content: true,
+      type: true,
+      attachmentName: true,
+      sender: { select: { id: true, name: true, avatar: true } },
+    },
+  },
 } as const;
 
 async function broadcastNewMessage(msg: MessageWithOrigin, userId: string, conversationId: string) {
@@ -48,8 +68,18 @@ async function persistMessageWithOrigin(
   conversationId: string,
   input: CreateMsg,
   fileMeta?: { contentHash: string },
+  opts: { forwardedFromMessageId?: string } = {},
 ) {
   await assertConversationMember(userId, conversationId);
+  if (input.replyToId) {
+    const replyTo = await prisma.message.findFirst({
+      where: { id: input.replyToId, conversationId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!replyTo) {
+      throw new HttpError(400, "Message de réponse introuvable dans cette conversation");
+    }
+  }
   const include = messageOriginInclude;
 
   if (!fileMeta || input.type === "text") {
@@ -58,8 +88,11 @@ async function persistMessageWithOrigin(
         conversationId,
         senderId: userId,
         content: input.content,
+        attachmentName: input.attachmentName,
         type: input.type,
         status: MessageStatus.sent,
+        replyToId: input.replyToId,
+        forwardedFromMessageId: opts.forwardedFromMessageId,
       },
       include,
     });
@@ -84,9 +117,12 @@ async function persistMessageWithOrigin(
         conversationId,
         senderId: userId,
         content: input.content,
+        attachmentName: input.attachmentName,
         type: input.type,
         status: MessageStatus.sent,
         fileContentHash: fileMeta.contentHash,
+        replyToId: input.replyToId,
+        forwardedFromMessageId: opts.forwardedFromMessageId,
         originalSubmitterId,
         isFirstIntroductionInConversation,
       },
@@ -326,6 +362,30 @@ export async function createMessageFromUploadedFile(
 ) {
   const contentHash = await sha256File(absoluteFilePath);
   return persistMessageWithOrigin(userId, conversationId, input, { contentHash });
+}
+
+export async function forwardMessage(userId: string, messageId: string, targetConversationId: string) {
+  const source = await prisma.message.findUnique({ where: { id: messageId } });
+  if (!source || source.deletedAt) {
+    throw new HttpError(404, "Message introuvable");
+  }
+  await assertConversationMember(userId, source.conversationId);
+  await assertConversationMember(userId, targetConversationId);
+
+  const fileMeta =
+    source.type !== "text" && source.fileContentHash ? { contentHash: source.fileContentHash } : undefined;
+
+  return persistMessageWithOrigin(
+    userId,
+    targetConversationId,
+    {
+      content: source.content,
+      type: source.type,
+      attachmentName: source.attachmentName ?? undefined,
+    },
+    fileMeta,
+    { forwardedFromMessageId: source.id },
+  );
 }
 
 export async function markConversationRead(userId: string, conversationId: string) {

@@ -6,6 +6,7 @@ const r = Router();
 
 r.use(authMiddleware);
 
+r.post("/:id/forward", ctrl.forward);
 r.patch("/:id/read", ctrl.patchRead);
 r.delete("/:id", ctrl.remove);
 

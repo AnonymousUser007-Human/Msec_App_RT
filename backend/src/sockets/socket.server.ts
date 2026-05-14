@@ -11,7 +11,8 @@ const typingSchema = joinSchema;
 const sendSchema = z.object({
   conversationId: z.string().min(1),
   content: z.string().min(1).max(20000),
-  type: z.enum(["text", "image", "file"]).default("text"),
+  type: z.enum(["text", "image", "audio", "video", "file"]).default("text"),
+  replyToId: z.string().min(1).optional(),
 });
 const deliveredSchema = z.object({
   conversationId: z.string().min(1),
@@ -90,7 +91,7 @@ async function handleConnection(io: Server, socket: Socket): Promise<void> {
     void (async () => {
       try {
         const body = sendSchema.parse(payload);
-        const parsed = createMessageSchema.parse({ content: body.content, type: body.type });
+        const parsed = createMessageSchema.parse({ content: body.content, type: body.type, replyToId: body.replyToId });
         const msg = await convService.createMessage(userId, body.conversationId, parsed);
         ack?.({ ok: true, message: msg });
       } catch (e) {

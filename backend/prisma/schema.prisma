@@ -15,6 +15,8 @@ enum ConversationType {
 enum MessageType {
   text
   image
+  audio
+  video
   file
 }
 
@@ -77,11 +79,14 @@ model Message {
   conversationId                  String        @map("conversation_id")
   senderId                        String        @map("sender_id")
   content                         String        @db.Text
+  attachmentName                  String?       @map("attachment_name") @db.VarChar(255)
   type                            MessageType   @default(text)
   status                          MessageStatus @default(sent)
   createdAt                       DateTime      @default(now()) @map("created_at")
   updatedAt                       DateTime      @updatedAt @map("updated_at")
   deletedAt                       DateTime?     @map("deleted_at")
+  replyToId                       String?       @map("reply_to_id")
+  forwardedFromMessageId          String?       @map("forwarded_from_message_id")
   /** Empreinte SHA-256 du fichier (pièces jointes locales uniquement). */
   fileContentHash                 String?       @map("file_content_hash") @db.VarChar(64)
   /** Premier utilisateur ayant introduit ce contenu dans la conversation (même hash). */
@@ -91,12 +96,18 @@ model Message {
 
   conversation       Conversation          @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   sender               User                  @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  replyTo              Message?              @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies              Message[]             @relation("MessageReplies")
+  forwardedFrom        Message?              @relation("MessageForwards", fields: [forwardedFromMessageId], references: [id], onDelete: SetNull)
+  forwardedCopies      Message[]             @relation("MessageForwards")
   originalSubmitter    User?                 @relation("MessageOriginalSubmitter", fields: [originalSubmitterId], references: [id], onDelete: SetNull)
   hides                MessageUserHide[]
   fileFirstIntroduction ConversationFileOrigin? @relation("FirstFileIntroduction")
 
   @@index([conversationId, createdAt])
   @@index([conversationId, fileContentHash])
+  @@index([replyToId])
+  @@index([forwardedFromMessageId])
   @@map("messages")
 }
 

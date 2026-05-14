@@ -258,6 +258,7 @@ export function ChatShell() {
           {selected ? (
             <ChatThread
               conversation={selected}
+              conversations={conversations}
               socket={socket}
               onConversationUpdated={() => void loadConversations()}
               onMobileBack={() => setMobileShowList(true)}

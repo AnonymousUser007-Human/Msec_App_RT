@@ -191,12 +191,22 @@ export function ConversationSidebar({
               const other = otherMember(c, user.id)
               const typing = typingByConv[c.id]
               const active = c.id === selectedId
+              const previewText =
+                c.lastMessage?.type === 'audio'
+                  ? 'Message vocal'
+                  : c.lastMessage?.type === 'video'
+                    ? 'Vidéo'
+                  : c.lastMessage?.type === 'image'
+                    ? 'Image'
+                    : c.lastMessage?.type === 'file'
+                      ? (c.lastMessage.attachmentName ?? 'Document')
+                      : c.lastMessage?.content
               const preview = typing ? (
                 <span className="italic text-[var(--sc-blue)]">{typing} écrit…</span>
               ) : c.lastMessage ? (
                 <span className="line-clamp-1 text-[var(--sc-text-muted)]">
                   {c.lastMessage.senderId === user.id ? 'Vous : ' : ''}
-                  {c.lastMessage.type !== 'text' ? '[Pièce jointe]' : c.lastMessage.content}
+                  {previewText}
                 </span>
               ) : (
                 <span className="text-[var(--sc-text-muted)]">Pas encore de message</span>

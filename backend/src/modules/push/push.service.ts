@@ -24,6 +24,8 @@ export function buildPushMessageBody(msg: { type: string; content: string }): st
     return msg.content.length > 120 ? `${msg.content.slice(0, 117)}…` : msg.content;
   }
   if (msg.type === "image") return "Nouvelle image";
+  if (msg.type === "audio") return "Nouveau message vocal";
+  if (msg.type === "video") return "Nouvelle vidéo";
   return "Nouveau fichier";
 }
 

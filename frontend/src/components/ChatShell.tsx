@@ -30,6 +30,13 @@ type LiveRaiseRequest = { roomId: string; userId: string; user: LiveUser }
 type LiveTapBurst = { id: number; roomId: string; x: number }
 type SocketAck = { ok?: boolean; error?: string }
 
+type LiveVideoTileProps = {
+  stream: MediaStream | null
+  label: string
+  muted?: boolean
+  emptyText?: string
+}
+
 function messagePreview(m: Message): string {
   if (m.type === 'text') return m.content.length > 100 ? `${m.content.slice(0, 97)}…` : m.content
   if (m.type === 'image') return 'Nouvelle image'
@@ -53,6 +60,43 @@ function addStreamTracksToPeer(pc: RTCPeerConnection, stream: MediaStream) {
   })
 }
 
+function liveDisplayName(room: LiveRoom, userId: string, currentUserId?: string): string {
+  if (userId === currentUserId) return 'Vous'
+  if (userId === room.hostId) return room.host.name
+  return room.participants.find((participant) => participant.id === userId)?.name ?? 'Invité'
+}
+
+function LiveVideoTile({ stream, label, muted = false, emptyText = 'Connexion au flux vidéo…' }: LiveVideoTileProps) {
+  const ref = useRef<HTMLVideoElement | null>(null)
+
+  useEffect(() => {
+    attachVideoStream(ref.current, stream)
+  }, [stream])
+
+  return (
+    <div className="relative min-h-48 overflow-hidden rounded-2xl bg-black">
+      {stream ? (
+        <video
+          ref={ref}
+          autoPlay
+          muted={muted}
+          playsInline
+          controls={!muted}
+          onLoadedMetadata={(e) => void e.currentTarget.play().catch(() => {})}
+          className="aspect-[9/16] max-h-[70vh] w-full bg-black object-cover"
+        />
+      ) : (
+        <div className="flex aspect-[9/16] max-h-[70vh] w-full items-center justify-center px-4 text-center text-xs text-white/75">
+          {emptyText}
+        </div>
+      )}
+      <span className="absolute left-2 top-2 max-w-[80%] truncate rounded-full bg-black/50 px-2 py-1 text-[11px] font-semibold text-white backdrop-blur">
+        {label}
+      </span>
+    </div>
+  )
+}
+
 export function ChatShell() {
   const layoutViewportHeight = useLayoutViewportHeight()
   const { token, user } = useAuth()
@@ -70,7 +114,7 @@ export function ChatShell() {
   const [hostingLiveId, setHostingLiveId] = useState<string | null>(null)
   const [coHostingLiveId, setCoHostingLiveId] = useState<string | null>(null)
   const [localLiveStream, setLocalLiveStream] = useState<MediaStream | null>(null)
-  const [remoteLiveStream, setRemoteLiveStream] = useState<MediaStream | null>(null)
+  const [remoteLiveStreams, setRemoteLiveStreams] = useState<Record<string, MediaStream>>({})
   const [liveInviteTargetByRoom, setLiveInviteTargetByRoom] = useState<Record<string, string>>({})
   const [liveRaiseRequests, setLiveRaiseRequests] = useState<Record<string, LiveRaiseRequest[]>>({})
   const [liveTapBursts, setLiveTapBursts] = useState<LiveTapBurst[]>([])
@@ -83,11 +127,10 @@ export function ChatShell() {
   const userRef = useRef(user)
   const recentToastMsgIds = useRef<Set<string>>(new Set())
   const refetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const localLiveVideoRef = useRef<HTMLVideoElement | null>(null)
-  const remoteLiveVideoRef = useRef<HTMLVideoElement | null>(null)
   const livePeerConnectionsRef = useRef<Record<string, RTCPeerConnection>>({})
   const pendingIceCandidatesRef = useRef<Record<string, RTCIceCandidateInit[]>>({})
   const localLiveStreamRef = useRef<MediaStream | null>(null)
+  const liveRoomsRef = useRef<LiveRoom[]>([])
   const joinedLiveIdRef = useRef<string | null>(null)
   const hostingLiveIdRef = useRef<string | null>(null)
   const coHostingLiveIdRef = useRef<string | null>(null)
@@ -128,6 +171,10 @@ export function ChatShell() {
   }, [conversations])
 
   useEffect(() => {
+    liveRoomsRef.current = liveRooms
+  }, [liveRooms])
+
+  useEffect(() => {
     mobileShowListRef.current = mobileShowList
   }, [mobileShowList])
 
@@ -149,12 +196,7 @@ export function ChatShell() {
 
   useEffect(() => {
     localLiveStreamRef.current = localLiveStream
-    attachVideoStream(localLiveVideoRef.current, localLiveStream)
-  }, [localLiveStream, joinedLiveId, hostingLiveId, coHostingLiveId, socialPanel])
-
-  useEffect(() => {
-    attachVideoStream(remoteLiveVideoRef.current, remoteLiveStream)
-  }, [remoteLiveStream, joinedLiveId, socialPanel])
+  }, [localLiveStream])
 
   useEffect(() => {
     void loadConversations()
@@ -287,7 +329,7 @@ export function ChatShell() {
     Object.values(livePeerConnectionsRef.current).forEach((pc) => pc.close())
     livePeerConnectionsRef.current = {}
     pendingIceCandidatesRef.current = {}
-    setRemoteLiveStream(null)
+    setRemoteLiveStreams({})
   }, [])
 
   const stopLocalLiveStream = useCallback(() => {
@@ -313,23 +355,9 @@ export function ChatShell() {
       audio: true,
     })
     localLiveStreamRef.current = stream
-    attachVideoStream(localLiveVideoRef.current, stream)
     setLocalLiveStream(stream)
     return stream
   }, [])
-
-  const attachLocalLiveVideo = useCallback((video: HTMLVideoElement | null) => {
-    localLiveVideoRef.current = video
-    attachVideoStream(video, localLiveStreamRef.current)
-  }, [])
-
-  const attachRemoteLiveVideo = useCallback(
-    (video: HTMLVideoElement | null) => {
-      remoteLiveVideoRef.current = video
-      attachVideoStream(video, remoteLiveStream)
-    },
-    [remoteLiveStream],
-  )
 
   const createLivePeerConnection = useCallback(
     (roomId: string, remoteUserId: string, stream?: MediaStream) => {
@@ -348,11 +376,18 @@ export function ChatShell() {
         })
       }
       pc.ontrack = (event) => {
-        setRemoteLiveStream(event.streams[0] ?? null)
+        const stream = event.streams[0]
+        if (!stream) return
+        setRemoteLiveStreams((prev) => ({ ...prev, [remoteUserId]: stream }))
       }
       pc.onconnectionstatechange = () => {
         if (pc.connectionState === 'failed' || pc.connectionState === 'closed' || pc.connectionState === 'disconnected') {
           delete livePeerConnectionsRef.current[remoteUserId]
+          setRemoteLiveStreams((prev) => {
+            const next = { ...prev }
+            delete next[remoteUserId]
+            return next
+          })
         }
       }
 
@@ -390,18 +425,27 @@ export function ChatShell() {
       const stream = await getLocalLiveStream()
       coHostingLiveIdRef.current = roomId
       setCoHostingLiveId(roomId)
-      let pc = livePeerConnectionsRef.current[hostId]
-      if (!pc) {
-        pc = createLivePeerConnection(roomId, hostId)
+      const room = liveRoomsRef.current.find((item) => item.id === roomId)
+      const targetIds = new Set([
+        hostId,
+        ...(room?.participants.map((participant) => participant.id) ?? []),
+      ])
+      targetIds.delete(userRef.current?.id ?? '')
+
+      for (const targetUserId of targetIds) {
+        let pc = livePeerConnectionsRef.current[targetUserId]
+        if (!pc) {
+          pc = createLivePeerConnection(roomId, targetUserId)
+        }
+        addStreamTracksToPeer(pc, stream)
+        const offer = await pc.createOffer()
+        await pc.setLocalDescription(offer)
+        socket.emit('live:signal', {
+          roomId,
+          targetUserId,
+          signal: { type: 'offer', sdp: offer } satisfies LiveSignal,
+        })
       }
-      addStreamTracksToPeer(pc, stream)
-      const offer = await pc.createOffer()
-      await pc.setLocalDescription(offer)
-      socket.emit('live:signal', {
-        roomId,
-        targetUserId: hostId,
-        signal: { type: 'offer', sdp: offer } satisfies LiveSignal,
-      })
       toast.success('Vous êtes monté dans le live')
     },
     [socket, getLocalLiveStream, createLivePeerConnection],
@@ -427,7 +471,8 @@ export function ChatShell() {
       } else {
         void loadLiveRooms()
       }
-      if (hostingLiveIdRef.current !== p.roomId) return
+      const canSendLocalStream = hostingLiveIdRef.current === p.roomId || coHostingLiveIdRef.current === p.roomId
+      if (!canSendLocalStream) return
       const stream = localLiveStreamRef.current
       if (!stream) return
       try {
@@ -447,6 +492,11 @@ export function ChatShell() {
     const onViewerLeft = (p: { roomId: string; userId: string }) => {
       livePeerConnectionsRef.current[p.userId]?.close()
       delete livePeerConnectionsRef.current[p.userId]
+      setRemoteLiveStreams((prev) => {
+        const next = { ...prev }
+        delete next[p.userId]
+        return next
+      })
       setLiveRooms((prev) =>
         prev.map((room) => {
           if (room.id !== p.roomId) return room
@@ -454,9 +504,6 @@ export function ChatShell() {
           return { ...room, participants, viewerCount: Math.max(0, room.viewerCount - 1) }
         }),
       )
-      if (joinedLiveIdRef.current === p.roomId && hostingLiveIdRef.current !== p.roomId) {
-        setRemoteLiveStream(null)
-      }
     }
 
     const onLiveSignal = async (p: { roomId: string; fromUserId: string; signal: LiveSignal }) => {
@@ -542,7 +589,16 @@ export function ChatShell() {
       })()
     }
 
-    const onCohostStarted = (p: { roomId: string; userId: string }) => {
+    const onCohostStarted = (p: { roomId: string; userId: string; user?: LiveUser | null }) => {
+      if (p.user) {
+        const cohost = p.user
+        setLiveRooms((prev) =>
+          prev.map((room) => {
+            if (room.id !== p.roomId || room.participants.some((participant) => participant.id === p.userId)) return room
+            return { ...room, participants: [...room.participants, cohost] }
+          }),
+        )
+      }
       if (p.userId === userRef.current?.id) return
       if (joinedLiveIdRef.current === p.roomId || hostingLiveIdRef.current === p.roomId) {
         toast.message('Un invité est monté dans le live')
@@ -635,7 +691,7 @@ export function ChatShell() {
   const joinLive = async (roomId: string) => {
     if (!token) return
     resetLiveMedia()
-    setRemoteLiveStream(null)
+    setRemoteLiveStreams({})
     await postJson('/api/live/' + roomId + '/join', {}, token)
     hostingLiveIdRef.current = null
     joinedLiveIdRef.current = roomId
@@ -720,6 +776,11 @@ export function ChatShell() {
       toast.error(ack?.error ?? 'Impossible de faire monter cette personne')
     })
   }
+
+  const remoteLiveEntries = Object.entries(remoteLiveStreams)
+  const shouldShowLocalLiveTile = (room: LiveRoom) =>
+    Boolean(localLiveStream && (hostingLiveId === room.id || coHostingLiveId === room.id || room.hostId === user?.id))
+  const liveTileCount = (room: LiveRoom) => remoteLiveEntries.length + (shouldShowLocalLiveTile(room) ? 1 : 0)
 
   return (
     <div
@@ -1061,49 +1122,21 @@ export function ChatShell() {
                         ) : null}
                         {joinedLiveId === room.id ? (
                           <div className="relative mt-3 overflow-hidden rounded-2xl bg-black text-white" onClick={() => sendLiveTap(room.id)}>
-                            {hostingLiveId === room.id || room.hostId === user?.id ? (
-                              <>
-                                <video
-                                  ref={attachLocalLiveVideo}
-                                  autoPlay
-                                  muted
-                                  playsInline
-                                  onLoadedMetadata={(e) => void e.currentTarget.play().catch(() => {})}
-                                  className="aspect-[9/16] max-h-[70vh] w-full bg-black object-cover"
+                            <div className={`grid gap-2 p-2 ${liveTileCount(room) > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                              {shouldShowLocalLiveTile(room) ? (
+                                <LiveVideoTile stream={localLiveStream} label="Vous" muted />
+                              ) : null}
+                              {remoteLiveEntries.map(([remoteUserId, stream]) => (
+                                <LiveVideoTile
+                                  key={remoteUserId}
+                                  stream={stream}
+                                  label={liveDisplayName(room, remoteUserId, user?.id)}
                                 />
-                                {remoteLiveStream ? (
-                                  <video
-                                    ref={attachRemoteLiveVideo}
-                                    autoPlay
-                                    playsInline
-                                    controls
-                                    onLoadedMetadata={(e) => void e.currentTarget.play().catch(() => {})}
-                                    className="absolute right-3 top-3 aspect-[9/16] h-36 rounded-2xl border border-white/30 bg-black object-cover shadow-xl"
-                                  />
-                                ) : null}
-                              </>
-                            ) : (
-                              <>
-                                <video
-                                  ref={attachRemoteLiveVideo}
-                                  autoPlay
-                                  playsInline
-                                  controls
-                                  onLoadedMetadata={(e) => void e.currentTarget.play().catch(() => {})}
-                                  className="aspect-[9/16] max-h-[70vh] w-full bg-black object-cover"
-                                />
-                                {coHostingLiveId === room.id ? (
-                                  <video
-                                    ref={attachLocalLiveVideo}
-                                    autoPlay
-                                    muted
-                                    playsInline
-                                    onLoadedMetadata={(e) => void e.currentTarget.play().catch(() => {})}
-                                    className="absolute right-3 top-3 aspect-[9/16] h-36 rounded-2xl border border-white/30 bg-black object-cover shadow-xl"
-                                  />
-                                ) : null}
-                              </>
-                            )}
+                              ))}
+                              {liveTileCount(room) === 0 ? (
+                                <LiveVideoTile stream={null} label="Live" />
+                              ) : null}
+                            </div>
                             {liveTapBursts
                               .filter((burst) => burst.roomId === room.id)
                               .map((burst) => (
@@ -1140,14 +1173,9 @@ export function ChatShell() {
                                 </button>
                               ) : null}
                             </div>
-                            {hostingLiveId !== room.id && !remoteLiveStream ? (
-                              <p className="px-4 py-3 text-center text-xs text-white/75">
-                                Connexion au flux vidéo en cours…
-                              </p>
-                            ) : null}
                             {hostingLiveId === room.id ? (
                               <p className="px-4 py-3 text-center text-xs text-white/75">
-                                Vous êtes en direct. Gardez cette fenêtre ouverte pour diffuser.
+                                Vous êtes en direct. Toutes les personnes montées apparaissent dans la grille.
                               </p>
                             ) : null}
                           </div>

@@ -248,8 +248,12 @@ async function handleConnection(io: Server, socket: Socket): Promise<void> {
         const room = await prisma.liveRoom.findUnique({ where: { id: roomId }, select: { hostId: true, isActive: true } });
         if (!room?.isActive) throw new Error("Live introuvable ou terminé");
         if (room.hostId !== userId) throw new Error("Seul l’hôte peut faire monter quelqu’un");
+        const cohost = await prisma.user.findUnique({
+          where: { id: targetUserId },
+          select: { id: true, name: true, avatar: true },
+        });
         io.to(`user:${targetUserId}`).emit("live:raise_approved", { roomId, hostId: userId });
-        io.to(`live:${roomId}`).emit("live:cohost_started", { roomId, userId: targetUserId });
+        io.to(`live:${roomId}`).emit("live:cohost_started", { roomId, userId: targetUserId, user: cohost });
         ack?.({ ok: true });
       } catch (e) {
         ack?.({ ok: false, error: e instanceof Error ? e.message : "Erreur" });

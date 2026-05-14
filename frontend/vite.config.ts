@@ -13,8 +13,9 @@ export default defineConfig({
       srcDir: 'src',
       filename: 'sw.ts',
       registerType: 'autoUpdate',
+      // Ne pas activer le SW en dev : il peut intercepter `/src/*.tsx` ou les chunks et renvoyer du HTML → erreur MIME « module script ».
       devOptions: {
-        enabled: true,
+        enabled: false,
       },
       includeAssets: ['logo.svg', 'favicon.svg', 'icons.svg'],
       manifest: {
@@ -38,7 +39,9 @@ export default defineConfig({
         ],
       },
       injectManifest: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        // Ne pas précacher index.html : après un déploiement, un ancien SW pouvait servir
+        // un vieux index pointant vers des chunks supprimés → 404/HTML pour les .js → erreur MIME en prod.
+        globPatterns: ['**/*.{js,css,ico,png,svg,woff2,webmanifest}'],
       },
     }),
   ],

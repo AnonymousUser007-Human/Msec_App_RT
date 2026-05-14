@@ -6,6 +6,10 @@ declare let self: ServiceWorkerGlobalScope
 
 type PushPayload = { title?: string; body?: string; url?: string }
 
+self.addEventListener('install', () => {
+  void self.skipWaiting()
+})
+
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') void self.skipWaiting()
 })

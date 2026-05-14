@@ -35,3 +35,18 @@ export const uploadMiddleware = multer({
     cb(null, true);
   },
 });
+
+const maxAvatarBytes = Math.min(5 * 1024 * 1024, maxBytes);
+
+/** Photos de profil : images uniquement, taille plafonnée. */
+export const avatarUploadMiddleware = multer({
+  storage,
+  limits: { fileSize: maxAvatarBytes },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith("image/")) {
+      cb(null, true);
+      return;
+    }
+    cb(new Error("La photo de profil doit être une image"));
+  },
+});

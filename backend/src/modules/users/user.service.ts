@@ -1,3 +1,5 @@
+import fs from "fs";
+import path from "path";
 import { prisma } from "../../config/prisma.js";
 import { HttpError } from "../../utils/httpError.js";
 import type { z } from "zod";
@@ -6,6 +8,18 @@ import type { updateMeSchema, listUsersQuerySchema, searchUsersQuerySchema } fro
 type UpdateMe = z.infer<typeof updateMeSchema>;
 type ListQuery = z.infer<typeof listUsersQuerySchema>;
 type SearchQuery = z.infer<typeof searchUsersQuerySchema>;
+
+const uploadsDir = path.join(process.cwd(), "uploads");
+
+function tryUnlinkLocalAvatar(avatar: string | null): void {
+  if (!avatar || !avatar.startsWith("/uploads/")) return;
+  const name = path.basename(avatar);
+  if (!name || name.includes("..")) return;
+  const root = path.resolve(uploadsDir);
+  const full = path.resolve(path.join(uploadsDir, name));
+  if (!full.startsWith(root + path.sep)) return;
+  fs.unlink(full, () => {});
+}
 
 export function toPublicUser(u: {
   id: string;
@@ -114,7 +128,22 @@ export async function getUserById(requesterId: string, id: string) {
   return toPublicUser(u);
 }
 
+export async function setAvatarFromUpload(userId: string, relativePath: string) {
+  return updateMe(userId, { avatar: relativePath });
+}
+
 export async function updateMe(userId: string, data: UpdateMe) {
+  if (data.avatar !== undefined) {
+    const row = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { avatar: true },
+    });
+    const prevA = row?.avatar ?? null;
+    const nextA = data.avatar;
+    if (prevA && prevA !== nextA && prevA.startsWith("/uploads/")) {
+      tryUnlinkLocalAvatar(prevA);
+    }
+  }
   const user = await prisma.user.update({
     where: { id: userId },
     data: {

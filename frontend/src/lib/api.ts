@@ -59,6 +59,11 @@ export function patchJson<T>(path: string, body: unknown, token?: string | null)
   return apiFetch<T>(path, { method: 'PATCH', body: JSON.stringify(body), headers: JSON_HEADERS, token })
 }
 
+/** Envoi multipart (ex. avatar) : ne pas définir Content-Type manuellement. */
+export function postFormData<T>(path: string, body: FormData, token?: string | null): Promise<T> {
+  return apiFetch<T>(path, { method: 'POST', body, token })
+}
+
 export function getJson<T>(path: string, token?: string | null): Promise<T> {
   return apiFetch<T>(path, { method: 'GET', token })
 }

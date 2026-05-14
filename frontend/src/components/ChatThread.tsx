@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react'
 import type { Socket } from 'socket.io-client'
 import { useAuth } from '../context/AuthContext'
 import type { Conversation, Message } from '../lib/types'
@@ -23,10 +23,24 @@ export function ChatThread({ conversation, socket, onConversationUpdated, onMobi
   const [sending, setSending] = useState(false)
   const [typingName, setTypingName] = useState<string | null>(null)
   const bottomRef = useRef<HTMLDivElement | null>(null)
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const typingStopTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const typingStartSent = useRef(false)
 
   const other = user ? otherMember(conversation, user.id) : undefined
+
+  /** Hauteur auto type WhatsApp : une ligne au départ, puis croissance jusqu’au plafond. */
+  useLayoutEffect(() => {
+    const el = textareaRef.current
+    if (!el) return
+    const minPx = 44
+    const maxPx = 168
+    el.style.height = 'auto'
+    const full = el.scrollHeight
+    const target = Math.min(Math.max(full, minPx), maxPx)
+    el.style.height = `${target}px`
+    el.style.overflowY = full > maxPx ? 'auto' : 'hidden'
+  }, [input, conversation.id])
 
   const scrollToBottom = useCallback(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -162,13 +176,6 @@ export function ChatThread({ conversation, socket, onConversationUpdated, onMobi
     void sendText()
   }
 
-  function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      void sendText()
-    }
-  }
-
   const statusLabel = (m: Message, mine: boolean) => {
     if (!mine) return null
     if (m.status === 'read') return 'Lu'
@@ -179,42 +186,44 @@ export function ChatThread({ conversation, socket, onConversationUpdated, onMobi
   if (!user) return null
 
   return (
-    <section className="flex min-h-0 min-w-0 flex-1 flex-col bg-[var(--sc-thread)]">
-      <header className="relative z-20 flex shrink-0 items-center gap-2 border-b border-[var(--sc-border)] bg-[var(--sc-header)] px-[max(1rem,env(safe-area-inset-left))] py-3 pr-[max(1rem,env(safe-area-inset-right))] pt-[max(0.75rem,env(safe-area-inset-top))] md:gap-3 md:pt-3">
-        {onMobileBack ? (
-          <button
-            type="button"
-            className="shrink-0 cursor-pointer rounded-lg border border-[var(--sc-border)] px-2 py-2 text-xs font-medium text-[var(--sc-text)] transition hover:border-[var(--sc-orange)] active:scale-[0.98] md:hidden min-[380px]:px-3"
-            onClick={onMobileBack}
-          >
-            Liste
-          </button>
-        ) : null}
-        <div className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[var(--sc-border)] bg-[var(--sc-input-bg)] text-sm font-semibold text-[var(--sc-text)] sm:h-11 sm:w-11">
-          {other?.avatar ? (
-            <img src={mediaUrl(other.avatar)} alt="" className="h-full w-full object-cover" />
-          ) : (
-            initials(other?.name ?? '?')
-          )}
-          {other?.isOnline ? (
-            <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-[var(--sc-header)] bg-[var(--sc-online)]" />
+    <section className="flex h-full min-h-0 min-w-0 flex-1 flex-col bg-[var(--sc-thread)]">
+      <header className="relative z-20 shrink-0 border-b border-[var(--sc-border)] bg-[var(--sc-header)] pt-[max(0.75rem,env(safe-area-inset-top))] md:pt-3">
+        <div className="flex h-14 min-h-14 max-h-14 w-full items-center gap-2 px-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] md:h-16 md:min-h-16 md:max-h-16 md:gap-3">
+          {onMobileBack ? (
+            <button
+              type="button"
+              className="shrink-0 cursor-pointer rounded-lg border border-[var(--sc-border)] px-2 py-2 text-xs font-medium text-[var(--sc-text)] transition hover:border-[var(--sc-orange)] active:scale-[0.98] md:hidden min-[380px]:px-3"
+              onClick={onMobileBack}
+            >
+              Liste
+            </button>
+          ) : null}
+          <div className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[var(--sc-border)] bg-[var(--sc-input-bg)] text-sm font-semibold text-[var(--sc-text)]">
+            {other?.avatar ? (
+              <img src={mediaUrl(other.avatar)} alt="" className="h-full w-full object-cover" />
+            ) : (
+              initials(other?.name ?? '?')
+            )}
+            {other?.isOnline ? (
+              <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-[var(--sc-header)] bg-[var(--sc-online)]" />
+            ) : null}
+          </div>
+          <div className="min-h-0 min-w-0 flex-1">
+            <h2 className="truncate font-display text-base font-semibold leading-tight text-[var(--sc-text)] sm:text-lg">{other?.name ?? 'Chat'}</h2>
+            <p className="truncate text-xs leading-tight text-[var(--sc-text-muted)]">
+              {other?.isOnline ? 'En ligne' : other?.lastSeen ? `Vu ${formatMessageTime(other.lastSeen)}` : 'Hors ligne'}
+            </p>
+          </div>
+          {onMobileBack ? (
+            <div className="ml-auto flex shrink-0 items-center gap-1.5 md:hidden">
+              {token ? <HeaderAlertsMenu token={token} compact /> : null}
+              <ThemeToggle compact />
+            </div>
           ) : null}
         </div>
-        <div className="min-w-0 flex-1">
-          <h2 className="truncate font-display text-base font-semibold text-[var(--sc-text)] sm:text-lg">{other?.name ?? 'Chat'}</h2>
-          <p className="text-xs text-[var(--sc-text-muted)]">
-            {other?.isOnline ? 'En ligne' : other?.lastSeen ? `Vu ${formatMessageTime(other.lastSeen)}` : 'Hors ligne'}
-          </p>
-        </div>
-        {onMobileBack ? (
-          <div className="ml-auto flex shrink-0 items-center gap-1.5 md:hidden">
-            {token ? <HeaderAlertsMenu token={token} compact /> : null}
-            <ThemeToggle compact />
-          </div>
-        ) : null}
       </header>
 
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-y-contain px-4 pb-2 pt-4 md:pb-4">
         {messages.map((m) => {
           const mine = m.senderId === user.id
           return (
@@ -260,16 +269,16 @@ export function ChatThread({ conversation, socket, onConversationUpdated, onMobi
 
       <form
         onSubmit={handleSubmit}
-        className="shrink-0 border-t border-[var(--sc-border)] bg-[var(--sc-header)] p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+        className="shrink-0 border-t border-[var(--sc-border)] bg-[var(--sc-header)] px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 md:p-3 md:pb-[max(0.75rem,env(safe-area-inset-bottom))]"
       >
         <div className="flex flex-col gap-2 min-[400px]:flex-row min-[400px]:items-end">
           <textarea
-            className="max-h-32 min-h-[44px] w-full flex-1 resize-y rounded-2xl border border-[var(--sc-border)] bg-[var(--sc-input-bg)] px-3 py-2.5 text-base text-[var(--sc-text)] outline-none placeholder:text-[var(--sc-text-muted)] focus:border-[var(--sc-orange)] focus:ring-2 focus:ring-orange-500/25 sm:text-sm"
+            ref={textareaRef}
+            className="min-h-[44px] w-full flex-1 resize-none rounded-2xl border border-[var(--sc-border)] bg-[var(--sc-input-bg)] px-3 py-2.5 text-base leading-snug text-[var(--sc-text)] outline-none placeholder:text-[var(--sc-text-muted)] focus:border-[var(--sc-orange)] focus:ring-2 focus:ring-orange-500/25 sm:text-sm"
             rows={1}
             placeholder="Écrivez un message…"
             value={input}
             onChange={(e) => onInputChange(e.target.value)}
-            onKeyDown={handleKeyDown}
           />
           <button
             type="submit"

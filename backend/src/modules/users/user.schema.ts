@@ -1,8 +1,16 @@
 import { z } from "zod";
 
+const avatarValue = z
+  .string()
+  .max(2048)
+  .refine(
+    (s) => /^https?:\/\//i.test(s) || s.startsWith("/uploads/"),
+    "URL absolue ou chemin /uploads/… attendu",
+  );
+
 export const updateMeSchema = z.object({
   name: z.string().min(1).max(120).optional(),
-  avatar: z.string().url().max(2048).optional().nullable(),
+  avatar: z.union([avatarValue, z.null()]).optional(),
 });
 
 export const listUsersQuerySchema = z.object({

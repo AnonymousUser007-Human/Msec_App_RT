@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { getJson, postJson } from '../lib/api'
+import { getJson, patchJson, postFormData, postJson } from '../lib/api'
 import type { User } from '../lib/types'
 
 const TOKEN_KEY = 'sobolo_chat_token'
@@ -13,6 +13,10 @@ type AuthState = {
   register: (payload: { name: string; password: string; phone?: string; email?: string }) => Promise<void>
   logout: () => void
   clearError: () => void
+  /** Met à jour nom et/ou avatar (URL, chemin serveur, ou null pour retirer la photo). */
+  patchProfile: (body: { name?: string; avatar?: string | null }) => Promise<void>
+  /** Envoie une image comme photo de profil (remplace l’actuelle). */
+  uploadAvatar: (file: File) => Promise<void>
 }
 
 const AuthContext = createContext<AuthState | null>(null)
@@ -82,6 +86,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null)
   }, [])
 
+  const patchProfile = useCallback(
+    async (body: { name?: string; avatar?: string | null }) => {
+      if (!token) throw new Error('Non connecté')
+      const u = await patchJson<User>('/api/users/me', body, token)
+      setUser(u)
+    },
+    [token],
+  )
+
+  const uploadAvatar = useCallback(
+    async (file: File) => {
+      if (!token) throw new Error('Non connecté')
+      const fd = new FormData()
+      fd.append('avatar', file)
+      const u = await postFormData<User>('/api/users/me/avatar', fd, token)
+      setUser(u)
+    },
+    [token],
+  )
+
   const clearError = useCallback(() => setError(null), [])
 
   const login = useCallback(
@@ -120,8 +144,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       register,
       logout,
       clearError,
+      patchProfile,
+      uploadAvatar,
     }),
-    [token, user, loading, error, login, register, logout, clearError],
+    [token, user, loading, error, login, register, logout, clearError, patchProfile, uploadAvatar],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

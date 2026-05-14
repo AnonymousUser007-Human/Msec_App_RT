@@ -6,6 +6,7 @@ import type { Conversation, Message } from '../lib/types'
 import { getJson } from '../lib/api'
 import { SOCKET_ORIGIN } from '../lib/config'
 import { SYSTEM_NOTIFY_KEY } from '../lib/notifyPrefs'
+import { useLayoutViewportHeight } from '../hooks/useLayoutViewportHeight'
 import { ConversationSidebar } from './ConversationSidebar'
 import { ChatThread } from './ChatThread'
 import { NewChatModal } from './NewChatModal'
@@ -21,6 +22,7 @@ function messagePreview(m: Message): string {
 }
 
 export function ChatShell() {
+  const layoutViewportHeight = useLayoutViewportHeight()
   const { token, user } = useAuth()
   const [socket, setSocket] = useState<Socket | null>(null)
   const [conversations, setConversations] = useState<Conversation[]>([])
@@ -186,7 +188,10 @@ export function ChatShell() {
   }
 
   return (
-    <div className="flex h-dvh min-h-0 max-h-dvh flex-col overflow-hidden bg-[var(--sc-page)] text-[var(--sc-text)]">
+    <div
+      className="flex min-h-0 flex-col overflow-hidden bg-[var(--sc-page)] text-[var(--sc-text)]"
+      style={{ height: layoutViewportHeight, maxHeight: layoutViewportHeight }}
+    >
       <header className="hidden shrink-0 items-center justify-between border-b border-[var(--sc-border)] bg-[var(--sc-header)] px-6 py-3 md:flex">
         <div className="flex items-center gap-3">
           <div className="h-10 w-10 shrink-0 overflow-hidden rounded-full ring-1 ring-[var(--sc-border)]">

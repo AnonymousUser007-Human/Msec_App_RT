@@ -61,6 +61,22 @@ function addStreamTracksToPeer(pc: RTCPeerConnection, stream: MediaStream) {
   })
 }
 
+function waitForStablePeer(pc: RTCPeerConnection, timeoutMs = 2000) {
+  if (pc.signalingState === 'stable') return Promise.resolve()
+  return new Promise<void>((resolve) => {
+    const timeout = window.setTimeout(done, timeoutMs)
+    function done() {
+      window.clearTimeout(timeout)
+      pc.removeEventListener('signalingstatechange', onChange)
+      resolve()
+    }
+    function onChange() {
+      if (pc.signalingState === 'stable') done()
+    }
+    pc.addEventListener('signalingstatechange', onChange)
+  })
+}
+
 function liveDisplayName(room: LiveRoom, userId: string, currentUserId?: string): string {
   if (userId === currentUserId) return 'Vous'
   if (userId === room.hostId) return room.host.name
@@ -447,6 +463,8 @@ export function ChatShell() {
         pc = createLivePeerConnection(roomId, targetUserId)
       }
       addStreamTracksToPeer(pc, stream)
+      await waitForStablePeer(pc)
+      if (pc.signalingState !== 'stable') return
       const offer = await pc.createOffer()
       await pc.setLocalDescription(offer)
       socket.emit('live:signal', {
@@ -477,7 +495,6 @@ export function ChatShell() {
       for (const targetUserId of targetIds) {
         await sendLocalLiveOffer(roomId, targetUserId)
       }
-      socket.emit('live:request_streams', { roomId })
       toast.success('Vous êtes monté dans le live')
     },
     [socket, getLocalLiveStream, markLiveCohost, sendLocalLiveOffer],
@@ -547,6 +564,13 @@ export function ChatShell() {
         }
 
         if (p.signal.type === 'offer') {
+          if (pc.signalingState === 'have-local-offer') {
+            await pc.setLocalDescription({ type: 'rollback' })
+          }
+          if (pc.signalingState !== 'stable') {
+            await waitForStablePeer(pc)
+          }
+          if (pc.signalingState !== 'stable') return
           await pc.setRemoteDescription(new RTCSessionDescription(p.signal.sdp))
           await flushPendingIceCandidates(p.fromUserId, pc)
           const answer = await pc.createAnswer()
@@ -645,7 +669,6 @@ export function ChatShell() {
       if (joinedLiveIdRef.current === p.roomId || hostingLiveIdRef.current === p.roomId) {
         toast.message('Un invité est monté dans le live')
       }
-      socket.emit('live:request_streams', { roomId: p.roomId })
     }
 
     socket.on('live:viewer_joined', onViewerJoined)

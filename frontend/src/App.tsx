@@ -1,5 +1,6 @@
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { ThemeProvider } from './context/ThemeContext'
+import { AppToaster } from './components/AppToaster'
 import { AuthScreen } from './components/AuthScreen'
 import { ChatShell } from './components/ChatShell'
 
@@ -25,6 +26,7 @@ function Gate() {
 export default function App() {
   return (
     <ThemeProvider>
+      <AppToaster />
       <AuthProvider>
         <Gate />
       </AuthProvider>

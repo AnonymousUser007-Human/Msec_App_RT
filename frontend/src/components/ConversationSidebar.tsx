@@ -75,7 +75,7 @@ export function ConversationSidebar({
   if (!user) return null
 
   return (
-    <aside className="flex h-full min-h-0 w-full max-w-full flex-col border-r border-[var(--sc-border)] bg-[var(--sc-sidebar)] md:max-w-[340px]">
+    <aside className="flex h-full min-h-0 w-full min-w-0 flex-col border-r border-[var(--sc-border)] bg-[var(--sc-sidebar)]">
       <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--sc-border)] px-4 py-3">
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--sc-text-muted)]">SOBOLO</p>
@@ -84,7 +84,7 @@ export function ConversationSidebar({
         <button
           type="button"
           onClick={onNewChat}
-          className="rounded-xl bg-[var(--sc-orange)] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[var(--sc-orange-hover)]"
+          className="cursor-pointer rounded-xl bg-[var(--sc-orange)] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[var(--sc-orange-hover)]"
         >
           + Nouveau
         </button>
@@ -102,7 +102,7 @@ export function ConversationSidebar({
           <button
             type="button"
             onClick={logout}
-            className="rounded-lg border border-[var(--sc-border)] px-2 py-1 text-xs text-[var(--sc-text-muted)] transition hover:border-[var(--sc-orange)] hover:text-[var(--sc-text)]"
+            className="cursor-pointer rounded-lg border border-[var(--sc-border)] px-2 py-1 text-xs text-[var(--sc-text-muted)] transition hover:border-[var(--sc-orange)] hover:text-[var(--sc-text)]"
           >
             Déconnexion
           </button>
@@ -136,7 +136,7 @@ export function ConversationSidebar({
                   <button
                     type="button"
                     onClick={() => handleSelect(c.id)}
-                    className={`flex w-full gap-3 border-l-2 px-4 py-3 text-left transition ${
+                    className={`flex w-full cursor-pointer gap-3 border-l-2 px-4 py-3 text-left transition ${
                       active
                         ? 'border-[var(--sc-orange)] bg-[var(--sc-muted-bg)]'
                         : 'border-transparent hover:bg-[var(--sc-muted-bg)]'

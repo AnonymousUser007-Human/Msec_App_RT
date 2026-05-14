@@ -6,6 +6,7 @@ import { getJson, postJson } from '../lib/api'
 import { otherMember } from '../lib/conversation'
 import { formatMessageTime, initials, mediaUrl } from '../lib/format'
 import { ThemeToggle } from './ThemeToggle'
+import { HeaderAlertsMenu } from './HeaderAlertsMenu'
 
 type Props = {
   conversation: Conversation
@@ -183,7 +184,7 @@ export function ChatThread({ conversation, socket, onConversationUpdated, onMobi
         {onMobileBack ? (
           <button
             type="button"
-            className="shrink-0 rounded-lg border border-[var(--sc-border)] px-2 py-2 text-xs font-medium text-[var(--sc-text)] transition hover:border-[var(--sc-orange)] active:scale-[0.98] md:hidden min-[380px]:px-3"
+            className="shrink-0 cursor-pointer rounded-lg border border-[var(--sc-border)] px-2 py-2 text-xs font-medium text-[var(--sc-text)] transition hover:border-[var(--sc-orange)] active:scale-[0.98] md:hidden min-[380px]:px-3"
             onClick={onMobileBack}
           >
             Liste
@@ -206,7 +207,8 @@ export function ChatThread({ conversation, socket, onConversationUpdated, onMobi
           </p>
         </div>
         {onMobileBack ? (
-          <div className="ml-auto flex shrink-0 md:hidden">
+          <div className="ml-auto flex shrink-0 items-center gap-1.5 md:hidden">
+            {token ? <HeaderAlertsMenu token={token} compact /> : null}
             <ThemeToggle compact />
           </div>
         ) : null}
@@ -231,8 +233,8 @@ export function ChatThread({ conversation, socket, onConversationUpdated, onMobi
                     rel="noreferrer"
                     className={
                       mine
-                        ? 'text-white underline decoration-white/70 underline-offset-2 hover:opacity-90'
-                        : 'sc-link'
+                        ? 'cursor-pointer text-white underline decoration-white/70 underline-offset-2 hover:opacity-90'
+                        : 'sc-link cursor-pointer'
                     }
                   >
                     Ouvrir la pièce jointe
@@ -272,7 +274,7 @@ export function ChatThread({ conversation, socket, onConversationUpdated, onMobi
           <button
             type="submit"
             disabled={sending || !input.trim()}
-            className="h-11 shrink-0 rounded-2xl bg-[var(--sc-orange)] px-4 text-sm font-semibold text-white transition hover:bg-[var(--sc-orange-hover)] disabled:cursor-not-allowed disabled:opacity-50 min-[400px]:h-auto min-[400px]:py-2.5"
+            className="h-11 shrink-0 cursor-pointer rounded-2xl bg-[var(--sc-orange)] px-4 text-sm font-semibold text-white transition hover:bg-[var(--sc-orange-hover)] disabled:cursor-not-allowed disabled:opacity-50 min-[400px]:h-auto min-[400px]:py-2.5"
           >
             Envoyer
           </button>

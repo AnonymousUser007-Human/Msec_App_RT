@@ -20,7 +20,7 @@ export function ThemeToggle({ compact = false }: { compact?: boolean }) {
       <button
         type="button"
         onClick={cycle}
-        className="inline-flex min-h-10 min-w-10 shrink-0 items-center justify-center rounded-lg border border-[var(--sc-border)] bg-[var(--sc-elevated)] px-2.5 text-xs font-medium text-[var(--sc-text)] transition hover:border-[var(--sc-orange)] hover:text-[var(--sc-orange)] active:scale-[0.98] md:min-h-0 md:min-w-0 md:px-2 md:py-1"
+        className="inline-flex min-h-10 min-w-10 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-[var(--sc-border)] bg-[var(--sc-elevated)] px-2.5 text-xs font-medium text-[var(--sc-text)] transition hover:border-[var(--sc-orange)] hover:text-[var(--sc-orange)] active:scale-[0.98] md:min-h-0 md:min-w-0 md:px-2 md:py-1"
         title={`Thème : ${LABELS[preference]} (cliquer pour changer)`}
         aria-label={`Thème : ${LABELS[preference]}`}
       >
@@ -39,7 +39,7 @@ export function ThemeToggle({ compact = false }: { compact?: boolean }) {
           key={p}
           type="button"
           onClick={() => setPreference(p)}
-          className={`rounded-lg px-2.5 py-1 text-xs font-medium transition ${
+          className={`cursor-pointer rounded-lg px-2.5 py-1 text-xs font-medium transition ${
             preference === p
               ? 'bg-[var(--sc-elevated)] text-[var(--sc-text)] shadow-sm'
               : 'text-[var(--sc-text-muted)] hover:text-[var(--sc-text)]'

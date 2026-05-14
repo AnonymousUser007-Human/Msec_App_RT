@@ -12,6 +12,9 @@ const envSchema = z.object({
   CORS_ORIGIN: z.string().default("*"),
   MAX_FILE_SIZE_MB: z.coerce.number().default(10),
   PUBLIC_BASE_URL: z.preprocess((val) => (val === "" ? undefined : val), z.string().url().optional()),
+  VAPID_PUBLIC_KEY: z.preprocess((val) => (val === "" ? undefined : val), z.string().min(1).optional()),
+  VAPID_PRIVATE_KEY: z.preprocess((val) => (val === "" ? undefined : val), z.string().min(1).optional()),
+  VAPID_SUBJECT: z.preprocess((val) => (val === "" ? undefined : val), z.string().min(1).optional()),
 });
 
 const parsed = envSchema.safeParse(process.env);

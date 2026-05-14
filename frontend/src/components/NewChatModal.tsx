@@ -59,16 +59,26 @@ export function NewChatModal({ open, onClose, onCreated }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center p-4 md:items-center"
+      role="presentation"
+      className="fixed inset-0 z-50 flex cursor-default items-end justify-center p-4 md:items-center"
       style={{ backgroundColor: 'var(--sc-overlay)' }}
+      onClick={onClose}
     >
-      <div className="w-full max-w-md rounded-3xl border border-[var(--sc-border)] bg-[var(--sc-elevated)] shadow-2xl">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="new-chat-title"
+        className="w-full max-w-md cursor-auto rounded-3xl border border-[var(--sc-border)] bg-[var(--sc-elevated)] shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between border-b border-[var(--sc-border)] px-4 py-3">
-          <h3 className="font-display text-lg font-semibold text-[var(--sc-text)]">Nouvelle discussion</h3>
+          <h3 id="new-chat-title" className="font-display text-lg font-semibold text-[var(--sc-text)]">
+            Nouvelle discussion
+          </h3>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg px-2 py-1 text-sm text-[var(--sc-text-muted)] transition hover:bg-[var(--sc-muted-bg)] hover:text-[var(--sc-text)]"
+            className="cursor-pointer rounded-lg px-2 py-1 text-sm text-[var(--sc-text-muted)] transition hover:bg-[var(--sc-muted-bg)] hover:text-[var(--sc-text)]"
           >
             Fermer
           </button>
@@ -95,7 +105,7 @@ export function NewChatModal({ open, onClose, onCreated }: Props) {
                   type="button"
                   disabled={creating === u.id}
                   onClick={() => void startWith(u)}
-                  className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-[var(--sc-muted-bg)] disabled:opacity-50"
+                  className="flex w-full cursor-pointer items-center gap-3 px-4 py-3 text-left transition hover:bg-[var(--sc-muted-bg)] disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-[var(--sc-border)] bg-[var(--sc-input-bg)] text-xs font-semibold text-[var(--sc-text)]">
                     {u.avatar ? <img src={mediaUrl(u.avatar)} alt="" className="h-full w-full object-cover" /> : initials(u.name)}

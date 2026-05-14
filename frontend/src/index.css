@@ -71,4 +71,10 @@ html.dark {
   .sc-link:hover {
     filter: brightness(1.08);
   }
+
+  /* Toasts Sonner : coin haut-droit + encoches (aligné zone header / actions) */
+  [data-sonner-toaster][data-y-position='top'][data-x-position='right'] {
+    top: max(0.65rem, env(safe-area-inset-top)) !important;
+    right: max(0.65rem, env(safe-area-inset-right)) !important;
+  }
 }

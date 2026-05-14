@@ -57,33 +57,32 @@ export function AuthScreen() {
   const displayError = localError ?? error
 
   return (
-    <div className="relative min-h-dvh bg-[var(--sc-page)] text-[var(--sc-text)]">
-      <div className="absolute right-[max(1rem,env(safe-area-inset-right))] top-[max(1rem,env(safe-area-inset-top))] z-10">
+    <div className="relative flex min-h-dvh flex-col overflow-x-hidden bg-[var(--sc-page)] text-[var(--sc-text)]">
+      <div className="absolute right-[max(0.75rem,env(safe-area-inset-right))] top-[max(0.75rem,env(safe-area-inset-top))] z-10">
         <ThemeToggle />
       </div>
 
-      <div className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-6 py-16">
-        <header className="mb-10 text-center">
-          <div className="mx-auto mb-5 h-20 w-20 overflow-hidden rounded-full border border-[var(--sc-border)] bg-[var(--sc-elevated)] shadow-sm">
+      <div className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center px-4 py-6 sm:px-6 sm:py-8">
+        <header className="mb-4 shrink-0 text-center">
+          <div className="mx-auto mb-3 h-14 w-14 overflow-hidden rounded-full border border-[var(--sc-border)] bg-[var(--sc-elevated)] shadow-sm">
             <img
               src={logoSrc}
               alt=""
-              width={80}
-              height={80}
+              width={56}
+              height={56}
               className="h-full w-full object-cover"
               onError={() => setLogoSrc('/logo.svg')}
             />
           </div>
-          <p className="text-xs font-semibold uppercase tracking-[0.35em] text-[var(--sc-text-muted)]">Messagerie temps réel</p>
-          <h1 className="mt-3 font-display text-3xl font-bold tracking-tight text-[var(--sc-text)] sm:text-4xl">SOBOLO CHAT</h1>
-          <p className="mt-2 text-sm text-[var(--sc-text-muted)]">Discutez simplement, en direct.</p>
+          <p className="text-[0.65rem] font-semibold uppercase tracking-[0.28em] text-[var(--sc-text-muted)]">Messagerie temps réel</p>
+          <h1 className="mt-1.5 font-display text-2xl font-bold tracking-tight text-[var(--sc-text)] sm:text-3xl">SOBOLO CHAT</h1>
         </header>
 
-        <div className="rounded-3xl border border-[var(--sc-border)] bg-[var(--sc-elevated)] p-6 shadow-md">
-          <div className="mb-6 flex rounded-2xl border border-[var(--sc-border)] bg-[var(--sc-muted-bg)] p-1">
+        <div className="shrink-0 rounded-2xl border border-[var(--sc-border)] bg-[var(--sc-elevated)] p-4 shadow-md sm:p-5">
+          <div className="mb-4 flex rounded-xl border border-[var(--sc-border)] bg-[var(--sc-muted-bg)] p-0.5">
             <button
               type="button"
-              className={`flex-1 rounded-xl py-2.5 text-sm font-medium transition ${
+              className={`flex-1 cursor-pointer rounded-lg py-2 text-sm font-medium transition ${
                 mode === 'login' ? 'bg-[var(--sc-elevated)] text-[var(--sc-text)] shadow-sm' : 'text-[var(--sc-text-muted)] hover:text-[var(--sc-text)]'
               }`}
               onClick={() => {
@@ -96,7 +95,7 @@ export function AuthScreen() {
             </button>
             <button
               type="button"
-              className={`flex-1 rounded-xl py-2.5 text-sm font-medium transition ${
+              className={`flex-1 cursor-pointer rounded-lg py-2 text-sm font-medium transition ${
                 mode === 'register' ? 'bg-[var(--sc-elevated)] text-[var(--sc-text)] shadow-sm' : 'text-[var(--sc-text-muted)] hover:text-[var(--sc-text)]'
               }`}
               onClick={() => {
@@ -111,7 +110,7 @@ export function AuthScreen() {
 
           {displayError ? (
             <div
-              className="mb-4 rounded-xl border px-3 py-2 text-sm"
+              className="mb-3 rounded-lg border px-2.5 py-1.5 text-sm"
               style={{
                 borderColor: 'var(--sc-error-border)',
                 backgroundColor: 'var(--sc-error-bg)',
@@ -124,11 +123,11 @@ export function AuthScreen() {
           ) : null}
 
           {mode === 'login' ? (
-            <form className="space-y-4" onSubmit={onLogin}>
+            <form className="space-y-3" onSubmit={onLogin}>
               <label className="block text-sm font-medium text-[var(--sc-text)]">
                 Téléphone ou email
                 <input
-                  className="mt-1.5 w-full rounded-xl border border-[var(--sc-border)] bg-[var(--sc-input-bg)] px-4 py-3 text-[var(--sc-text)] outline-none transition placeholder:text-[var(--sc-text-muted)] focus:border-[var(--sc-orange)] focus:ring-2 focus:ring-orange-500/25"
+                  className="mt-1 w-full rounded-lg border border-[var(--sc-border)] bg-[var(--sc-input-bg)] px-3 py-2.5 text-[var(--sc-text)] outline-none transition placeholder:text-[var(--sc-text-muted)] focus:border-[var(--sc-orange)] focus:ring-2 focus:ring-orange-500/25"
                   value={identifier}
                   onChange={(e) => setIdentifier(e.target.value)}
                   autoComplete="username"
@@ -140,7 +139,7 @@ export function AuthScreen() {
                 Mot de passe
                 <input
                   type="password"
-                  className="mt-1.5 w-full rounded-xl border border-[var(--sc-border)] bg-[var(--sc-input-bg)] px-4 py-3 text-[var(--sc-text)] outline-none transition placeholder:text-[var(--sc-text-muted)] focus:border-[var(--sc-orange)] focus:ring-2 focus:ring-orange-500/25"
+                  className="mt-1 w-full rounded-lg border border-[var(--sc-border)] bg-[var(--sc-input-bg)] px-3 py-2.5 text-[var(--sc-text)] outline-none transition placeholder:text-[var(--sc-text-muted)] focus:border-[var(--sc-orange)] focus:ring-2 focus:ring-orange-500/25"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   autoComplete="current-password"
@@ -150,17 +149,17 @@ export function AuthScreen() {
               <button
                 type="submit"
                 disabled={pending}
-                className="w-full rounded-xl bg-[var(--sc-orange)] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[var(--sc-orange-hover)] disabled:cursor-not-allowed disabled:opacity-50"
+                className="w-full cursor-pointer rounded-lg bg-[var(--sc-orange)] px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-[var(--sc-orange-hover)] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {pending ? 'Connexion…' : 'Entrer dans SOBOLO CHAT'}
               </button>
             </form>
           ) : (
-            <form className="space-y-4" onSubmit={onRegister}>
+            <form className="space-y-3" onSubmit={onRegister}>
               <label className="block text-sm font-medium text-[var(--sc-text)]">
                 Nom affiché
                 <input
-                  className="mt-1.5 w-full rounded-xl border border-[var(--sc-border)] bg-[var(--sc-input-bg)] px-4 py-3 text-[var(--sc-text)] outline-none transition focus:border-[var(--sc-orange)] focus:ring-2 focus:ring-orange-500/25"
+                  className="mt-1 w-full rounded-lg border border-[var(--sc-border)] bg-[var(--sc-input-bg)] px-3 py-2.5 text-[var(--sc-text)] outline-none transition focus:border-[var(--sc-orange)] focus:ring-2 focus:ring-orange-500/25"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   required
@@ -169,7 +168,7 @@ export function AuthScreen() {
               <label className="block text-sm font-medium text-[var(--sc-text)]">
                 Téléphone <span className="text-[var(--sc-text-muted)]">(optionnel si email)</span>
                 <input
-                  className="mt-1.5 w-full rounded-xl border border-[var(--sc-border)] bg-[var(--sc-input-bg)] px-4 py-3 text-[var(--sc-text)] outline-none transition focus:border-[var(--sc-orange)] focus:ring-2 focus:ring-orange-500/25"
+                  className="mt-1 w-full rounded-lg border border-[var(--sc-border)] bg-[var(--sc-input-bg)] px-3 py-2.5 text-[var(--sc-text)] outline-none transition focus:border-[var(--sc-orange)] focus:ring-2 focus:ring-orange-500/25"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   placeholder="+243…"
@@ -179,7 +178,7 @@ export function AuthScreen() {
                 Email <span className="text-[var(--sc-text-muted)]">(optionnel si téléphone)</span>
                 <input
                   type="email"
-                  className="mt-1.5 w-full rounded-xl border border-[var(--sc-border)] bg-[var(--sc-input-bg)] px-4 py-3 text-[var(--sc-text)] outline-none transition focus:border-[var(--sc-orange)] focus:ring-2 focus:ring-orange-500/25"
+                  className="mt-1 w-full rounded-lg border border-[var(--sc-border)] bg-[var(--sc-input-bg)] px-3 py-2.5 text-[var(--sc-text)] outline-none transition focus:border-[var(--sc-orange)] focus:ring-2 focus:ring-orange-500/25"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   autoComplete="email"
@@ -189,7 +188,7 @@ export function AuthScreen() {
                 Mot de passe
                 <input
                   type="password"
-                  className="mt-1.5 w-full rounded-xl border border-[var(--sc-border)] bg-[var(--sc-input-bg)] px-4 py-3 text-[var(--sc-text)] outline-none transition focus:border-[var(--sc-orange)] focus:ring-2 focus:ring-orange-500/25"
+                  className="mt-1 w-full rounded-lg border border-[var(--sc-border)] bg-[var(--sc-input-bg)] px-3 py-2.5 text-[var(--sc-text)] outline-none transition focus:border-[var(--sc-orange)] focus:ring-2 focus:ring-orange-500/25"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   autoComplete="new-password"
@@ -200,7 +199,7 @@ export function AuthScreen() {
               <button
                 type="submit"
                 disabled={pending}
-                className="w-full rounded-xl bg-[var(--sc-orange)] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[var(--sc-orange-hover)] disabled:cursor-not-allowed disabled:opacity-50"
+                className="w-full cursor-pointer rounded-lg bg-[var(--sc-orange)] px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-[var(--sc-orange-hover)] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {pending ? 'Création…' : 'Créer mon compte'}
               </button>
@@ -208,7 +207,9 @@ export function AuthScreen() {
           )}
         </div>
 
-        <p className="mt-8 text-center text-xs text-[var(--sc-text-muted)]">© SOBOLO CHAT</p>
+        <p className="mt-4 shrink-0 pb-[max(0.5rem,env(safe-area-inset-bottom))] text-center text-[0.65rem] text-[var(--sc-text-muted)]">
+          © SOBOLO CHAT
+        </p>
       </div>
     </div>
   )

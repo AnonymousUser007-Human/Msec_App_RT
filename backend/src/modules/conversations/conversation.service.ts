@@ -6,6 +6,7 @@ import { messageToDto } from "./message.dto.js";
 import type { z } from "zod";
 import type { createConversationSchema, listMessagesQuerySchema, createMessageSchema } from "./conversation.schema.js";
 import { getSocketIO } from "../../sockets/io.js";
+import { buildPushMessageBody, notifyRecipientsOfNewMessage } from "../push/push.service.js";
 
 type CreateConv = z.infer<typeof createConversationSchema>;
 type ListMsgQuery = z.infer<typeof listMessagesQuerySchema>;
@@ -230,6 +231,16 @@ export async function createMessage(userId: string, conversationId: string, inpu
   for (const r of recipients) {
     io?.to(`user:${r.userId}`).emit("message:new", dto);
   }
+
+  const senderRow = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
+  void notifyRecipientsOfNewMessage(
+    recipients.map((r) => r.userId),
+    {
+      senderName: senderRow?.name ?? "Contact",
+      conversationId,
+      body: buildPushMessageBody(dto),
+    },
+  ).catch(() => {});
 
   return dto;
 }

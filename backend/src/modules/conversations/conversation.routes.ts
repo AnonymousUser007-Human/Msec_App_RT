@@ -18,11 +18,23 @@ function uploadSingle(req: Request, res: Response, next: NextFunction): void {
   });
 }
 
+function uploadFolder(req: Request, res: Response, next: NextFunction): void {
+  uploadMiddleware.array("files", 100)(req, res, (err) => {
+    if (err) {
+      next(err);
+      return;
+    }
+    next();
+  });
+}
+
 r.post("/", ctrl.create);
 r.get("/", ctrl.list);
 r.get("/:id/messages", ctrl.listMessages);
 r.post("/:id/messages", ctrl.postMessage);
 r.post("/:id/messages/upload", uploadSingle, ctrl.postMessageUpload);
+r.post("/:id/messages/folder", uploadFolder, ctrl.postFolderUpload);
+r.post("/:id/members", ctrl.addMembers);
 r.post("/:id/read", ctrl.markAllRead);
 r.get("/:id", ctrl.getOne);
 

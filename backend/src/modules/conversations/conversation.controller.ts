@@ -1,10 +1,26 @@
 import type { Request, Response, NextFunction } from "express";
 import path from "path";
 import { z } from "zod";
-import { createConversationSchema, listMessagesQuerySchema, createMessageSchema } from "./conversation.schema.js";
+import { addGroupMembersSchema, createConversationSchema, listMessagesQuerySchema, createMessageSchema } from "./conversation.schema.js";
 import * as convService from "./conversation.service.js";
+import {
+  folderNameFromRelativePaths,
+  normalizeFolderRelativePath,
+  type UploadedFolderFile,
+} from "./conversation.fileHash.js";
 import { HttpError } from "../../utils/httpError.js";
 import { routeParam } from "../../utils/routeParam.js";
+
+const folderUploadBodySchema = z.object({
+  replyToId: z.string().min(1).optional(),
+  folderName: z.string().min(1).max(255).optional(),
+  relativePaths: z.union([z.string(), z.array(z.string())]).optional(),
+});
+
+function stringArray(value: string | string[] | undefined): string[] {
+  if (!value) return [];
+  return Array.isArray(value) ? value : [value];
+}
 
 export async function create(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -80,10 +96,59 @@ export async function postMessageUpload(req: Request, res: Response, next: NextF
   }
 }
 
+export async function postFolderUpload(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const files = Array.isArray(req.files) ? req.files : [];
+    if (files.length === 0) {
+      throw new HttpError(400, "Dossier requis");
+    }
+
+    const body = folderUploadBodySchema.parse(req.body);
+    const bodyPaths = stringArray(body.relativePaths);
+    const relativePaths = files.map((file, index) =>
+      normalizeFolderRelativePath(bodyPaths[index] ?? file.originalname, file.originalname),
+    );
+    const folderName = normalizeFolderRelativePath(
+      body.folderName ?? folderNameFromRelativePaths(relativePaths),
+      "Dossier",
+    ).split("/")[0]!;
+
+    const uploadedFiles: UploadedFolderFile[] = files.map((file, index) => ({
+      absolutePath: path.join(process.cwd(), "uploads", file.filename),
+      publicPath: `/uploads/${file.filename}`,
+      relativePath: relativePaths[index]!,
+      originalName: file.originalname,
+      mimeType: file.mimetype,
+      size: file.size,
+    }));
+
+    const msg = await convService.createMessageFromUploadedFolder(
+      req.user!.id,
+      routeParam(req, "id"),
+      folderName,
+      uploadedFiles,
+      body.replyToId,
+    );
+    res.status(201).json(msg);
+  } catch (e) {
+    next(e);
+  }
+}
+
 export async function markAllRead(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const result = await convService.markConversationRead(req.user!.id, routeParam(req, "id"));
     res.json(result);
+  } catch (e) {
+    next(e);
+  }
+}
+
+export async function addMembers(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const body = addGroupMembersSchema.parse(req.body);
+    const conv = await convService.addGroupMembers(req.user!.id, routeParam(req, "id"), body);
+    res.json(conv);
   } catch (e) {
     next(e);
   }

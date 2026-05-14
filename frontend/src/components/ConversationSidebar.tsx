@@ -6,6 +6,7 @@ import type { Conversation } from '../lib/types'
 import { postJson } from '../lib/api'
 import { otherMember } from '../lib/conversation'
 import { formatListTime, initials, mediaUrl } from '../lib/format'
+import { AvatarImage } from './AvatarImage'
 
 type Props = {
   conversations: Conversation[]
@@ -142,11 +143,7 @@ export function ConversationSidebar({
             onClick={() => avatarFileRef.current?.click()}
             className="relative flex h-14 w-14 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-2xl border border-[var(--sc-border)] bg-[var(--sc-input-bg)] text-sm font-bold text-[var(--sc-text)] transition hover:border-[var(--sc-orange)] disabled:cursor-wait disabled:opacity-70"
           >
-            {user.avatar ? (
-              <img src={mediaUrl(user.avatar)} alt="" className="h-full w-full object-cover" />
-            ) : (
-              initials(user.name)
-            )}
+            <AvatarImage src={user.avatar} alt={user.name} />
             {avatarBusy ? (
               <span className="absolute inset-0 flex items-center justify-center bg-black/35">
                 <span
@@ -189,6 +186,8 @@ export function ConversationSidebar({
           <ul className="divide-y divide-[var(--sc-border)]">
             {sorted.map((c) => {
               const other = otherMember(c, user.id)
+              const title = c.type === 'group' ? (c.title ?? 'Groupe') : (other?.name ?? 'Conversation')
+              const avatar = c.type === 'group' ? c.avatar : other?.avatar
               const typing = typingByConv[c.id]
               const active = c.id === selectedId
               const previewText =
@@ -225,17 +224,19 @@ export function ConversationSidebar({
                   >
                     <div className="relative shrink-0">
                       <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl border border-[var(--sc-border)] bg-[var(--sc-input-bg)] text-sm font-semibold text-[var(--sc-text)]">
-                        {other ? (
-                          other.avatar ? (
-                            <img src={mediaUrl(other.avatar)} alt="" className="h-full w-full object-cover" />
+                        {c.type === 'group' ? (
+                          avatar ? (
+                            <img src={mediaUrl(avatar)} alt="" className="h-full w-full object-cover" />
                           ) : (
-                            initials(other.name)
+                            initials(title)
                           )
+                        ) : other ? (
+                          <AvatarImage src={avatar} alt={other.name} />
                         ) : (
                           '?'
                         )}
                       </div>
-                      {other?.isOnline ? (
+                      {c.type !== 'group' && other?.isOnline ? (
                         <span
                           className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-[var(--sc-sidebar)] bg-[var(--sc-online)]"
                           title="En ligne"
@@ -244,11 +245,17 @@ export function ConversationSidebar({
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-baseline justify-between gap-2">
-                        <span className="truncate font-medium text-[var(--sc-text)]">{other?.name ?? 'Conversation'}</span>
+                        <span className="truncate font-medium text-[var(--sc-text)]">{title}</span>
                         <span className="shrink-0 text-[11px] text-[var(--sc-text-muted)]">{formatListTime(timeSrc)}</span>
                       </div>
                       <div className="mt-0.5 flex items-center justify-between gap-2">
-                        <p className="min-w-0 flex-1 text-sm">{preview}</p>
+                        <p className="min-w-0 flex-1 text-sm">
+                          {c.type === 'group' && !c.lastMessage ? (
+                            <span className="text-[var(--sc-text-muted)]">{c.members.length} membres</span>
+                          ) : (
+                            preview
+                          )}
+                        </p>
                         {c.unreadCount > 0 ? (
                           <span className="shrink-0 rounded-full bg-[var(--sc-orange)] px-2 py-0.5 text-[11px] font-semibold text-white">
                             {c.unreadCount > 99 ? '99+' : c.unreadCount}

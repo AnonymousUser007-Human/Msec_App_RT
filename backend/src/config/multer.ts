@@ -27,9 +27,18 @@ export const uploadMiddleware = multer({
       file.mimetype.startsWith("image/") ||
       file.mimetype.startsWith("audio/") ||
       file.mimetype.startsWith("video/") ||
+      file.mimetype === "text/plain" ||
+      file.mimetype === "text/csv" ||
+      file.mimetype === "application/json" ||
       file.mimetype === "application/pdf" ||
+      file.mimetype === "application/zip" ||
+      file.mimetype === "application/x-zip-compressed" ||
       file.mimetype === "application/msword" ||
-      file.mimetype === "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+      file.mimetype === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+      file.mimetype === "application/vnd.ms-excel" ||
+      file.mimetype === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+      file.mimetype === "application/vnd.ms-powerpoint" ||
+      file.mimetype === "application/vnd.openxmlformats-officedocument.presentationml.presentation";
     if (!okMime) {
       cb(new Error("Type de fichier non autorisé"));
       return;

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import type { Conversation, User } from '../lib/types'
 import { getJson, postJson } from '../lib/api'
-import { initials, mediaUrl } from '../lib/format'
+import { AvatarImage } from './AvatarImage'
 
 type Props = {
   open: boolean
@@ -14,6 +14,9 @@ export function NewChatModal({ open, onClose, onCreated }: Props) {
   const { token } = useAuth()
   const [q, setQ] = useState('')
   const [results, setResults] = useState<User[]>([])
+  const [mode, setMode] = useState<'private' | 'group'>('private')
+  const [groupName, setGroupName] = useState('')
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [creating, setCreating] = useState<string | null>(null)
 
@@ -55,6 +58,31 @@ export function NewChatModal({ open, onClose, onCreated }: Props) {
     }
   }
 
+  function toggleMember(id: string) {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
+  }
+
+  async function createGroup() {
+    if (!token || !groupName.trim() || selectedIds.length < 2) return
+    setCreating('group')
+    try {
+      const conv = await postJson<Conversation>(
+        '/api/conversations',
+        { type: 'group', title: groupName.trim(), memberIds: selectedIds },
+        token,
+      )
+      onCreated(conv.id)
+      onClose()
+      setQ('')
+      setGroupName('')
+      setSelectedIds([])
+      setResults([])
+      setMode('private')
+    } finally {
+      setCreating(null)
+    }
+  }
+
   if (!open) return null
 
   return (
@@ -73,7 +101,7 @@ export function NewChatModal({ open, onClose, onCreated }: Props) {
       >
         <div className="flex items-center justify-between border-b border-[var(--sc-border)] px-4 py-3">
           <h3 id="new-chat-title" className="font-display text-lg font-semibold text-[var(--sc-text)]">
-            Nouvelle discussion
+            {mode === 'group' ? 'Nouveau groupe' : 'Nouvelle discussion'}
           </h3>
           <button
             type="button"
@@ -84,6 +112,30 @@ export function NewChatModal({ open, onClose, onCreated }: Props) {
           </button>
         </div>
         <div className="p-4">
+          <div className="mb-3 grid grid-cols-2 rounded-xl border border-[var(--sc-border)] bg-[var(--sc-muted-bg)] p-0.5">
+            <button
+              type="button"
+              onClick={() => setMode('private')}
+              className={`rounded-lg px-3 py-2 text-sm font-semibold ${mode === 'private' ? 'bg-[var(--sc-elevated)] text-[var(--sc-text)] shadow-sm' : 'text-[var(--sc-text-muted)]'}`}
+            >
+              Privé
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode('group')}
+              className={`rounded-lg px-3 py-2 text-sm font-semibold ${mode === 'group' ? 'bg-[var(--sc-elevated)] text-[var(--sc-text)] shadow-sm' : 'text-[var(--sc-text-muted)]'}`}
+            >
+              Groupe
+            </button>
+          </div>
+          {mode === 'group' ? (
+            <input
+              className="mb-3 w-full rounded-xl border border-[var(--sc-border)] bg-[var(--sc-input-bg)] px-3 py-2.5 text-sm text-[var(--sc-text)] outline-none placeholder:text-[var(--sc-text-muted)] focus:border-[var(--sc-orange)] focus:ring-2 focus:ring-orange-500/25"
+              placeholder="Nom du groupe…"
+              value={groupName}
+              onChange={(e) => setGroupName(e.target.value)}
+            />
+          ) : null}
           <input
             className="w-full rounded-xl border border-[var(--sc-border)] bg-[var(--sc-input-bg)] px-3 py-2.5 text-sm text-[var(--sc-text)] outline-none placeholder:text-[var(--sc-text-muted)] focus:border-[var(--sc-orange)] focus:ring-2 focus:ring-orange-500/25"
             placeholder="Rechercher par nom, téléphone ou email…"
@@ -91,7 +143,19 @@ export function NewChatModal({ open, onClose, onCreated }: Props) {
             onChange={(e) => setQ(e.target.value)}
             autoFocus
           />
-          <p className="mt-2 text-xs text-[var(--sc-text-muted)]">Saisissez au moins 2 caractères.</p>
+          <p className="mt-2 text-xs text-[var(--sc-text-muted)]">
+            {mode === 'group' ? 'Sélectionnez au moins 2 membres.' : 'Saisissez au moins 2 caractères.'}
+          </p>
+          {mode === 'group' ? (
+            <button
+              type="button"
+              disabled={!groupName.trim() || selectedIds.length < 2 || creating === 'group'}
+              onClick={() => void createGroup()}
+              className="mt-3 w-full cursor-pointer rounded-xl bg-[var(--sc-orange)] px-3 py-2 text-sm font-semibold text-white transition hover:bg-[var(--sc-orange-hover)] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Créer le groupe ({selectedIds.length})
+            </button>
+          ) : null}
         </div>
         <div className="max-h-72 overflow-y-auto border-t border-[var(--sc-border)]">
           {loading ? <p className="px-4 py-6 text-center text-sm text-[var(--sc-text-muted)]">Recherche…</p> : null}
@@ -104,16 +168,21 @@ export function NewChatModal({ open, onClose, onCreated }: Props) {
                 <button
                   type="button"
                   disabled={creating === u.id}
-                  onClick={() => void startWith(u)}
+                  onClick={() => (mode === 'group' ? toggleMember(u.id) : void startWith(u))}
                   className="flex w-full cursor-pointer items-center gap-3 px-4 py-3 text-left transition hover:bg-[var(--sc-muted-bg)] disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-[var(--sc-border)] bg-[var(--sc-input-bg)] text-xs font-semibold text-[var(--sc-text)]">
-                    {u.avatar ? <img src={mediaUrl(u.avatar)} alt="" className="h-full w-full object-cover" /> : initials(u.name)}
+                    <AvatarImage src={u.avatar} alt={u.name} />
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-medium text-[var(--sc-text)]">{u.name}</p>
                     <p className="truncate text-xs text-[var(--sc-text-muted)]">{u.phone ?? u.email ?? ''}</p>
                   </div>
+                  {mode === 'group' ? (
+                    <span
+                      className={`h-5 w-5 shrink-0 rounded-full border ${selectedIds.includes(u.id) ? 'border-[var(--sc-orange)] bg-[var(--sc-orange)]' : 'border-[var(--sc-border)]'}`}
+                    />
+                  ) : null}
                   {u.isOnline ? <span className="h-2 w-2 shrink-0 rounded-full bg-[var(--sc-online)]" /> : null}
                 </button>
               </li>

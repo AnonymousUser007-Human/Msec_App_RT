@@ -9,13 +9,14 @@ export type User = {
   createdAt: string
 }
 
+export type MessageKind = 'text' | 'image' | 'audio' | 'video' | 'file'
 export type MessageStatus = 'sent' | 'delivered' | 'read'
 
 export type MessageReference = {
   id: string
   senderId: string
   content: string
-  type: 'text' | 'image' | 'audio' | 'video' | 'file'
+  type: MessageKind
   attachmentName: string | null
   sender: { id: string; name: string; avatar: string | null } | null
 }
@@ -25,11 +26,12 @@ export type Message = {
   conversationId: string
   senderId: string
   content: string
-  type: 'text' | 'image' | 'audio' | 'video' | 'file'
+  type: MessageKind
   attachmentName: string | null
   status: MessageStatus
   createdAt: string
   updatedAt: string
+  editedAt: string | null
   deletedAt: string | null
   /** Premier utilisateur ayant introduit ce fichier (même contenu binaire) dans la conversation. */
   originalSubmitter?: { id: string; name: string; avatar: string | null } | null
@@ -46,9 +48,35 @@ export type LastMessage = Message & {
 export type Conversation = {
   id: string
   type: 'private' | 'group'
+  title: string | null
+  avatar: string | null
+  createdById: string | null
   createdAt: string
   updatedAt: string
   members: User[]
   lastMessage: LastMessage | null
   unreadCount: number
+}
+
+export type StatusPost = {
+  id: string
+  userId: string
+  content: string
+  type: MessageKind
+  attachmentName: string | null
+  expiresAt: string
+  createdAt: string
+  updatedAt: string
+  user: { id: string; name: string; avatar: string | null }
+}
+
+export type LiveRoom = {
+  id: string
+  hostId: string
+  title: string
+  isActive: boolean
+  startedAt: string
+  endedAt: string | null
+  host: { id: string; name: string; avatar: string | null }
+  viewerCount: number
 }

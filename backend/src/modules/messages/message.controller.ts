@@ -11,6 +11,10 @@ const forwardBodySchema = z.object({
   conversationId: z.string().min(1),
 });
 
+const editBodySchema = z.object({
+  content: z.string().min(1).max(20000),
+});
+
 export async function patchRead(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const result = await convService.markMessageReadById(req.user!.id, routeParam(req, "id"));
@@ -24,6 +28,16 @@ export async function remove(req: Request, res: Response, next: NextFunction): P
   try {
     const { scope } = deleteQuerySchema.parse(req.query);
     const result = await convService.deleteMessage(req.user!.id, routeParam(req, "id"), scope);
+    res.json(result);
+  } catch (e) {
+    next(e);
+  }
+}
+
+export async function edit(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const body = editBodySchema.parse(req.body);
+    const result = await convService.editMessage(req.user!.id, routeParam(req, "id"), body.content);
     res.json(result);
   } catch (e) {
     next(e);

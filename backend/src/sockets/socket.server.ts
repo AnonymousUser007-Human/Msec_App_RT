@@ -11,12 +11,20 @@ const typingSchema = joinSchema;
 const sendSchema = z.object({
   conversationId: z.string().min(1),
   content: z.string().min(1).max(20000),
-  type: z.enum(["text", "image", "audio", "video", "file"]).default("text"),
+  type: z.enum(["text", "image", "audio", "video", "file", "folder"]).default("text"),
   replyToId: z.string().min(1).optional(),
 });
 const deliveredSchema = z.object({
   conversationId: z.string().min(1),
   messageIds: z.array(z.string().min(1)).min(1),
+});
+const liveRoomSchema = z.object({ roomId: z.string().min(1) });
+const liveSignalSchema = liveRoomSchema.extend({
+  targetUserId: z.string().min(1).optional(),
+  signal: z.unknown(),
+});
+const liveChatSchema = liveRoomSchema.extend({
+  text: z.string().min(1).max(500),
 });
 
 export function registerSocketHandlers(io: Server): void {
@@ -124,6 +132,67 @@ async function handleConnection(io: Server, socket: Socket): Promise<void> {
     try {
       const { conversationId } = typingSchema.parse(payload);
       socket.to(`conversation:${conversationId}`).emit("typing:stop", { conversationId, userId });
+    } catch {
+      /* ignore */
+    }
+  });
+
+  socket.on("live:join", (payload: unknown, ack?: (r: unknown) => void) => {
+    void (async () => {
+      try {
+        const { roomId } = liveRoomSchema.parse(payload);
+        const room = await prisma.liveRoom.findUnique({ where: { id: roomId }, select: { isActive: true } });
+        if (!room?.isActive) throw new Error("Live introuvable ou terminé");
+        await prisma.liveParticipant.upsert({
+          where: { roomId_userId: { roomId, userId } },
+          create: { roomId, userId },
+          update: { leftAt: null },
+        });
+        await socket.join(`live:${roomId}`);
+        socket.to(`live:${roomId}`).emit("live:viewer_joined", { roomId, userId });
+        ack?.({ ok: true });
+      } catch (e) {
+        ack?.({ ok: false, error: e instanceof Error ? e.message : "Erreur" });
+      }
+    })();
+  });
+
+  socket.on("live:leave", (payload: unknown) => {
+    void (async () => {
+      try {
+        const { roomId } = liveRoomSchema.parse(payload);
+        await prisma.liveParticipant.updateMany({ where: { roomId, userId }, data: { leftAt: new Date() } });
+        await socket.leave(`live:${roomId}`);
+        socket.to(`live:${roomId}`).emit("live:viewer_left", { roomId, userId });
+      } catch {
+        /* ignore */
+      }
+    })();
+  });
+
+  socket.on("live:signal", (payload: unknown) => {
+    try {
+      const { roomId, targetUserId, signal } = liveSignalSchema.parse(payload);
+      const event = { roomId, fromUserId: userId, signal };
+      if (targetUserId) {
+        io.to(`user:${targetUserId}`).emit("live:signal", event);
+        return;
+      }
+      socket.to(`live:${roomId}`).emit("live:signal", event);
+    } catch {
+      /* ignore */
+    }
+  });
+
+  socket.on("live:chat", (payload: unknown) => {
+    try {
+      const { roomId, text } = liveChatSchema.parse(payload);
+      io.to(`live:${roomId}`).emit("live:chat", {
+        roomId,
+        userId,
+        text,
+        createdAt: new Date().toISOString(),
+      });
     } catch {
       /* ignore */
     }

@@ -8,6 +8,8 @@ import { userRouter } from "./modules/users/user.routes.js";
 import { conversationRouter } from "./modules/conversations/conversation.routes.js";
 import { messageRouter } from "./modules/messages/message.routes.js";
 import { pushRouter } from "./modules/push/push.routes.js";
+import { statusRouter } from "./modules/status/status.routes.js";
+import { liveRouter } from "./modules/live/live.routes.js";
 import { errorMiddleware } from "./middlewares/error.middleware.js";
 
 const app = express();
@@ -43,6 +45,8 @@ app.use("/api/users", userRouter);
 app.use("/api/conversations", conversationRouter);
 app.use("/api/messages", messageRouter);
 app.use("/api/push", pushRouter);
+app.use("/api/statuses", statusRouter);
+app.use("/api/live", liveRouter);
 
 app.use(errorMiddleware);
 

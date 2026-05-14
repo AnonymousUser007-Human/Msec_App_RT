@@ -3,11 +3,12 @@ import { toast } from 'sonner'
 import type { Socket } from 'socket.io-client'
 import { useAuth } from '../context/AuthContext'
 import type { Conversation, Message } from '../lib/types'
-import { getJson, postFormData, postJson } from '../lib/api'
+import { deleteJson, getJson, patchJson, postFormData, postJson } from '../lib/api'
 import { otherMember } from '../lib/conversation'
 import { formatMessageTime, initials, mediaUrl } from '../lib/format'
 import { ThemeToggle } from './ThemeToggle'
 import { HeaderAlertsMenu } from './HeaderAlertsMenu'
+import { AvatarImage } from './AvatarImage'
 
 function fileProvenanceLine(m: Message, viewerId: string): string | null {
   if (m.type === 'text') return null
@@ -76,6 +77,7 @@ export function ChatThread({ conversation, conversations = [], socket, onConvers
   const [typingName, setTypingName] = useState<string | null>(null)
   const [replyTo, setReplyTo] = useState<Message | null>(null)
   const [forwardingMessage, setForwardingMessage] = useState<Message | null>(null)
+  const [editingMessage, setEditingMessage] = useState<Message | null>(null)
   const [emojiOpen, setEmojiOpen] = useState(false)
   const bottomRef = useRef<HTMLDivElement | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
@@ -91,11 +93,13 @@ export function ChatThread({ conversation, conversations = [], socket, onConvers
 
   const other = user ? otherMember(conversation, user.id) : undefined
   const forwardTargets = user ? conversations.filter((c) => c.id !== conversation.id) : []
+  const threadTitle = conversation.type === 'group' ? (conversation.title ?? 'Groupe') : (other?.name ?? 'Chat')
+  const threadAvatar = conversation.type === 'group' ? conversation.avatar : other?.avatar
 
   const conversationTitle = useCallback(
     (c: Conversation) => {
       if (!user) return 'Conversation'
-      return otherMember(c, user.id)?.name ?? 'Conversation'
+      return c.type === 'group' ? (c.title ?? 'Groupe') : (otherMember(c, user.id)?.name ?? 'Conversation')
     },
     [user],
   )
@@ -134,6 +138,7 @@ export function ChatThread({ conversation, conversations = [], socket, onConvers
   useEffect(() => {
     setReplyTo(null)
     setForwardingMessage(null)
+    setEditingMessage(null)
     setEmojiOpen(false)
   }, [conversation.id])
 
@@ -182,14 +187,26 @@ export function ChatThread({ conversation, conversations = [], socket, onConvers
         prev.map((m) => (m.senderId === user?.id ? { ...m, status: 'read' as const } : m)),
       )
     }
+    const onUpdated = (msg: Message) => {
+      if (msg.conversationId !== conversation.id) return
+      setMessages((prev) => prev.map((m) => (m.id === msg.id ? msg : m)))
+    }
+    const onDeleted = (p: { messageId: string; conversationId: string }) => {
+      if (p.conversationId !== conversation.id) return
+      setMessages((prev) => prev.filter((m) => m.id !== p.messageId))
+    }
     socket.on('message:new', onNew)
     socket.on('message:delivered', onDelivered)
     socket.on('message:read', onRead)
+    socket.on('message:updated', onUpdated)
+    socket.on('message:deleted', onDeleted)
     return () => {
       socket.emit('conversation:leave', { conversationId: conversation.id })
       socket.off('message:new', onNew)
       socket.off('message:delivered', onDelivered)
       socket.off('message:read', onRead)
+      socket.off('message:updated', onUpdated)
+      socket.off('message:deleted', onDeleted)
     }
   }, [socket, conversation.id, user, token, scrollToBottom, onConversationUpdated])
 
@@ -248,6 +265,15 @@ export function ChatThread({ conversation, conversations = [], socket, onConvers
     sendTypingStop()
     setSending(true)
     try {
+      if (editingMessage) {
+        const msg = await patchJson<Message>(`/api/messages/${editingMessage.id}`, { content: text }, token)
+        setMessages((prev) => prev.map((m) => (m.id === msg.id ? msg : m)))
+        setInput('')
+        setEditingMessage(null)
+        requestAnimationFrame(scrollToBottom)
+        onConversationUpdated()
+        return
+      }
       const msg = await postJson<Message>(
         `/api/conversations/${conversation.id}/messages`,
         { content: text, type: 'text', ...(replyTo ? { replyToId: replyTo.id } : {}) },
@@ -261,7 +287,7 @@ export function ChatThread({ conversation, conversations = [], socket, onConvers
     } finally {
       setSending(false)
     }
-  }, [input, token, conversation.id, replyTo, sendTypingStop, scrollToBottom, onConversationUpdated])
+  }, [input, token, conversation.id, replyTo, editingMessage, sendTypingStop, scrollToBottom, onConversationUpdated])
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -383,6 +409,34 @@ export function ChatThread({ conversation, conversations = [], socket, onConvers
     [token, forwardingMessage, onConversationUpdated],
   )
 
+  const startEditMessage = useCallback((message: Message) => {
+    setEditingMessage(message)
+    setReplyTo(null)
+    setEmojiOpen(false)
+    setInput(message.content)
+    requestAnimationFrame(() => textareaRef.current?.focus())
+  }, [])
+
+  const cancelEditMessage = useCallback(() => {
+    setEditingMessage(null)
+    setInput('')
+  }, [])
+
+  const deleteMessageForAll = useCallback(
+    async (message: Message) => {
+      if (!token) return
+      if (!window.confirm('Supprimer ce message pour tout le monde ?')) return
+      try {
+        await deleteJson(`/api/messages/${message.id}?scope=all`, token)
+        setMessages((prev) => prev.filter((m) => m.id !== message.id))
+        onConversationUpdated()
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Suppression impossible')
+      }
+    },
+    [token, onConversationUpdated],
+  )
+
   const statusLabel = (m: Message, mine: boolean) => {
     if (!mine) return null
     if (m.status === 'read') return 'Lu'
@@ -406,19 +460,21 @@ export function ChatThread({ conversation, conversations = [], socket, onConvers
             </button>
           ) : null}
           <div className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[var(--sc-border)] bg-[var(--sc-input-bg)] text-sm font-semibold text-[var(--sc-text)]">
-            {other?.avatar ? (
-              <img src={mediaUrl(other.avatar)} alt="" className="h-full w-full object-cover" />
+            {conversation.type === 'group' && !threadAvatar ? (
+              initials(threadTitle)
             ) : (
-              initials(other?.name ?? '?')
+              <AvatarImage src={threadAvatar} alt={threadTitle} />
             )}
-            {other?.isOnline ? (
+            {conversation.type !== 'group' && other?.isOnline ? (
               <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-[var(--sc-header)] bg-[var(--sc-online)]" />
             ) : null}
           </div>
           <div className="min-h-0 min-w-0 flex-1">
-            <h2 className="truncate font-display text-base font-semibold leading-tight text-[var(--sc-text)] sm:text-lg">{other?.name ?? 'Chat'}</h2>
+            <h2 className="truncate font-display text-base font-semibold leading-tight text-[var(--sc-text)] sm:text-lg">{threadTitle}</h2>
             <p className="truncate text-xs leading-tight text-[var(--sc-text-muted)]">
-              {other?.isOnline ? 'En ligne' : other?.lastSeen ? `Vu ${formatMessageTime(other.lastSeen)}` : 'Hors ligne'}
+              {conversation.type === 'group'
+                ? `${conversation.members.length} membres`
+                : other?.isOnline ? 'En ligne' : other?.lastSeen ? `Vu ${formatMessageTime(other.lastSeen)}` : 'Hors ligne'}
             </p>
           </div>
           {onMobileBack ? (
@@ -535,7 +591,26 @@ export function ChatThread({ conversation, conversations = [], socket, onConvers
                   >
                     Transférer
                   </button>
+                  {mine && m.type === 'text' ? (
+                    <button
+                      type="button"
+                      onClick={() => startEditMessage(m)}
+                      className="cursor-pointer text-white/85 hover:text-white"
+                    >
+                      Modifier
+                    </button>
+                  ) : null}
+                  {mine ? (
+                    <button
+                      type="button"
+                      onClick={() => void deleteMessageForAll(m)}
+                      className="cursor-pointer text-white/85 hover:text-white"
+                    >
+                      Supprimer
+                    </button>
+                  ) : null}
                   <span>{formatMessageTime(m.createdAt)}</span>
+                  {m.editedAt ? <span>Modifié</span> : null}
                   {statusLabel(m, mine) ? <span>{statusLabel(m, mine)}</span> : null}
                 </div>
               </div>
@@ -566,7 +641,21 @@ export function ChatThread({ conversation, conversations = [], socket, onConvers
             ))}
           </div>
         ) : null}
-        {replyTo ? (
+        {editingMessage ? (
+          <div className="mb-2 flex items-start gap-2 rounded-2xl border border-[var(--sc-border)] bg-[var(--sc-muted-bg)] px-3 py-2 text-sm">
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-semibold text-[var(--sc-orange)]">Modification du message</p>
+              <p className="line-clamp-1 text-[var(--sc-text-muted)]">{messagePreviewText(editingMessage)}</p>
+            </div>
+            <button
+              type="button"
+              onClick={cancelEditMessage}
+              className="cursor-pointer rounded-lg px-2 py-1 text-xs text-[var(--sc-text-muted)] hover:bg-[var(--sc-input-bg)]"
+            >
+              Annuler
+            </button>
+          </div>
+        ) : replyTo ? (
           <div className="mb-2 flex items-start gap-2 rounded-2xl border border-[var(--sc-border)] bg-[var(--sc-muted-bg)] px-3 py-2 text-sm">
             <div className="min-w-0 flex-1">
               <p className="text-xs font-semibold text-[var(--sc-orange)]">
@@ -594,7 +683,7 @@ export function ChatThread({ conversation, conversations = [], socket, onConvers
             />
             <button
               type="button"
-              disabled={uploadingAttachment || sending || !token}
+              disabled={uploadingAttachment || sending || !token || Boolean(editingMessage)}
               onClick={() => attachmentRef.current?.click()}
               aria-label="Joindre un fichier"
               title="Joindre un fichier"
@@ -610,7 +699,7 @@ export function ChatThread({ conversation, conversations = [], socket, onConvers
             </button>
             <button
               type="button"
-              disabled={uploadingAttachment || sending || !token}
+              disabled={uploadingAttachment || sending || !token || Boolean(editingMessage)}
               onClick={() => (recordingVoice ? stopVoiceRecording() : void startVoiceRecording())}
               aria-label={recordingVoice ? "Arrêter l'enregistrement vocal" : 'Enregistrer un vocal'}
               title={recordingVoice ? "Arrêter l'enregistrement vocal" : 'Enregistrer un vocal'}
@@ -653,7 +742,7 @@ export function ChatThread({ conversation, conversations = [], socket, onConvers
             disabled={sending || uploadingAttachment || recordingVoice || !input.trim()}
             className="h-11 shrink-0 cursor-pointer rounded-2xl bg-[var(--sc-orange)] px-4 text-sm font-semibold text-white transition hover:bg-[var(--sc-orange-hover)] disabled:cursor-not-allowed disabled:opacity-50 min-[400px]:h-auto min-[400px]:py-2.5"
           >
-            Envoyer
+            {editingMessage ? 'Modifier' : 'Envoyer'}
           </button>
         </div>
       </form>

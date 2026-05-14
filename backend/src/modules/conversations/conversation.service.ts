@@ -4,14 +4,21 @@ import { HttpError } from "../../utils/httpError.js";
 import * as userService from "../users/user.service.js";
 import { messageToDto, type MessageWithOrigin } from "./message.dto.js";
 import type { z } from "zod";
-import type { createConversationSchema, listMessagesQuerySchema, createMessageSchema } from "./conversation.schema.js";
+import type { addGroupMembersSchema, createConversationSchema, listMessagesQuerySchema, createMessageSchema } from "./conversation.schema.js";
 import { getSocketIO } from "../../sockets/io.js";
 import { buildPushMessageBody, notifyRecipientsOfNewMessage } from "../push/push.service.js";
-import { computeFileHashFromMessageContent, sha256File } from "./conversation.fileHash.js";
+import {
+  buildFolderManifest,
+  computeFileHashFromMessageContent,
+  sha256File,
+  sha256FolderManifest,
+  type UploadedFolderFile,
+} from "./conversation.fileHash.js";
 
 type CreateConv = z.infer<typeof createConversationSchema>;
 type ListMsgQuery = z.infer<typeof listMessagesQuerySchema>;
 type CreateMsg = z.infer<typeof createMessageSchema>;
+type AddGroupMembers = z.infer<typeof addGroupMembersSchema>;
 
 const messageOriginInclude = {
   originalSubmitter: { select: { id: true, name: true, avatar: true } },
@@ -173,6 +180,12 @@ async function findPrivateBetween(userA: string, userB: string) {
 }
 
 export async function createPrivateConversation(requesterId: string, input: CreateConv) {
+  if (input.type === "group") {
+    return createGroupConversation(requesterId, input);
+  }
+  if (!input.receiverId) {
+    throw new HttpError(400, "Destinataire requis");
+  }
   if (input.receiverId === requesterId) {
     throw new HttpError(400, "Impossible de créer une conversation avec vous-même");
   }
@@ -195,6 +208,64 @@ export async function createPrivateConversation(requesterId: string, input: Crea
     },
   });
   return getConversationDto(requesterId, conv.id);
+}
+
+export async function createGroupConversation(requesterId: string, input: CreateConv) {
+  const title = input.title?.trim();
+  if (!title) {
+    throw new HttpError(400, "Nom du groupe requis");
+  }
+  const memberIds = Array.from(new Set([requesterId, ...(input.memberIds ?? [])]));
+  if (memberIds.length < 3) {
+    throw new HttpError(400, "Un groupe doit contenir au moins 3 membres");
+  }
+  const existingUsers = await prisma.user.findMany({ where: { id: { in: memberIds } }, select: { id: true } });
+  if (existingUsers.length !== memberIds.length) {
+    throw new HttpError(404, "Un ou plusieurs membres sont introuvables");
+  }
+  const conv = await prisma.conversation.create({
+    data: {
+      type: ConversationType.group,
+      title,
+      createdById: requesterId,
+      members: {
+        create: memberIds.map((userId) => ({
+          userId,
+          role: userId === requesterId ? "admin" : "member",
+        })),
+      },
+    },
+  });
+  return getConversationDto(requesterId, conv.id);
+}
+
+export async function addGroupMembers(userId: string, conversationId: string, input: AddGroupMembers) {
+  await assertConversationMember(userId, conversationId);
+  const conv = await prisma.conversation.findUnique({
+    where: { id: conversationId },
+    select: { type: true },
+  });
+  if (!conv || conv.type !== ConversationType.group) {
+    throw new HttpError(400, "Conversation de groupe requise");
+  }
+  const member = await prisma.conversationMember.findFirst({
+    where: { conversationId, userId },
+    select: { role: true },
+  });
+  if (member?.role !== "admin") {
+    throw new HttpError(403, "Seul un admin peut ajouter des membres");
+  }
+  const ids = Array.from(new Set(input.memberIds.filter((id) => id !== userId)));
+  await prisma.$transaction(
+    ids.map((id) =>
+      prisma.conversationMember.upsert({
+        where: { conversationId_userId: { conversationId, userId: id } },
+        create: { conversationId, userId: id },
+        update: {},
+      }),
+    ),
+  );
+  return getConversationDto(userId, conversationId);
 }
 
 async function lastMessageFor(userId: string, conversationId: string) {
@@ -255,6 +326,9 @@ export async function getConversationDto(userId: string, conversationId: string)
   return {
     id: conv.id,
     type: conv.type,
+    title: conv.title,
+    avatar: conv.avatar,
+    createdById: conv.createdById,
     createdAt: conv.createdAt,
     updatedAt: conv.updatedAt,
     members: conv.members.map((m) => userService.toPublicUser(m.user)),
@@ -299,6 +373,9 @@ export async function listConversations(userId: string) {
       return {
         id: c.id,
         type: c.type,
+        title: c.title,
+        avatar: c.avatar,
+        createdById: c.createdById,
         createdAt: c.createdAt,
         updatedAt: c.updatedAt,
         members: c.members.map((m) => userService.toPublicUser(m.user)),
@@ -362,6 +439,31 @@ export async function createMessageFromUploadedFile(
 ) {
   const contentHash = await sha256File(absoluteFilePath);
   return persistMessageWithOrigin(userId, conversationId, input, { contentHash });
+}
+
+export async function createMessageFromUploadedFolder(
+  userId: string,
+  conversationId: string,
+  folderName: string,
+  files: UploadedFolderFile[],
+  replyToId?: string,
+) {
+  if (files.length === 0) {
+    throw new HttpError(400, "Dossier vide");
+  }
+  const contentHash = await sha256FolderManifest(files);
+  const manifest = buildFolderManifest(folderName, files);
+  return persistMessageWithOrigin(
+    userId,
+    conversationId,
+    {
+      content: JSON.stringify(manifest),
+      type: "folder",
+      attachmentName: folderName,
+      replyToId,
+    },
+    { contentHash },
+  );
 }
 
 export async function forwardMessage(userId: string, messageId: string, targetConversationId: string) {
@@ -431,6 +533,27 @@ export async function markMessagesDelivered(viewerId: string, conversationId: st
       status: MessageStatus.delivered,
     });
   }
+}
+
+export async function editMessage(userId: string, messageId: string, content: string) {
+  const msg = await prisma.message.findUnique({ where: { id: messageId } });
+  if (!msg || msg.deletedAt) {
+    throw new HttpError(404, "Message introuvable");
+  }
+  if (msg.senderId !== userId) {
+    throw new HttpError(403, "Vous ne pouvez modifier que vos messages");
+  }
+  if (msg.type !== "text") {
+    throw new HttpError(400, "Seuls les messages texte peuvent être modifiés");
+  }
+  const updated = await prisma.message.update({
+    where: { id: messageId },
+    data: { content: content.trim(), editedAt: new Date() },
+    include: messageOriginInclude,
+  });
+  const dto = messageToDto(updated as MessageWithOrigin);
+  getSocketIO()?.to(`conversation:${msg.conversationId}`).emit("message:updated", dto);
+  return dto;
 }
 
 export async function deleteMessage(userId: string, messageId: string, scope: "all" | "me") {

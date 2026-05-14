@@ -22,6 +22,7 @@ export function messageToDto(m: MessageWithOrigin) {
     status: m.status as MessageStatus,
     createdAt: m.createdAt,
     updatedAt: m.updatedAt,
+    editedAt: m.editedAt,
     deletedAt: m.deletedAt,
     originalSubmitter:
       sub && typeof sub === "object" && "id" in sub && sub.id

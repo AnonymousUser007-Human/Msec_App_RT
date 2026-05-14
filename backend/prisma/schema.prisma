@@ -18,6 +18,7 @@ enum MessageType {
   audio
   video
   file
+  folder
 }
 
 enum MessageStatus {
@@ -40,10 +41,14 @@ model User {
 
   sentMessages              Message[]                 @relation("SentMessages")
   messagesAsOriginalSource  Message[]                 @relation("MessageOriginalSubmitter")
+  createdConversations      Conversation[]            @relation("ConversationCreator")
   conversationMembers     ConversationMember[]
   messageHides              MessageUserHide[]
   pushSubscriptions         PushSubscription[]
   conversationFileFirstSent ConversationFileOrigin[]  @relation("FileFirstSender")
+  statuses                  StatusPost[]
+  hostedLiveRooms           LiveRoom[]                 @relation("LiveHost")
+  liveParticipants          LiveParticipant[]
 
   @@map("users")
 }
@@ -51,12 +56,16 @@ model User {
 model Conversation {
   id        String           @id @default(cuid())
   type      ConversationType @default(private)
+  title     String?
+  avatar    String?
+  createdById String?        @map("created_by_id")
   createdAt DateTime         @default(now()) @map("created_at")
   updatedAt DateTime         @updatedAt @map("updated_at")
 
   members   ConversationMember[]
   messages  Message[]
   fileOrigins ConversationFileOrigin[]
+  createdBy User? @relation("ConversationCreator", fields: [createdById], references: [id], onDelete: SetNull)
 
   @@map("conversations")
 }
@@ -65,6 +74,7 @@ model ConversationMember {
   id             String   @id @default(cuid())
   conversationId String   @map("conversation_id")
   userId         String   @map("user_id")
+  role           String   @default("member") @db.VarChar(32)
   joinedAt       DateTime @default(now()) @map("joined_at")
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
@@ -72,6 +82,55 @@ model ConversationMember {
 
   @@unique([conversationId, userId])
   @@map("conversation_members")
+}
+
+model StatusPost {
+  id             String      @id @default(cuid())
+  userId         String      @map("user_id")
+  content        String      @db.Text
+  type           MessageType @default(text)
+  attachmentName String?     @map("attachment_name") @db.VarChar(255)
+  expiresAt      DateTime    @map("expires_at")
+  createdAt      DateTime    @default(now()) @map("created_at")
+  updatedAt      DateTime    @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+  @@index([userId, createdAt])
+  @@map("status_posts")
+}
+
+model LiveRoom {
+  id        String    @id @default(cuid())
+  hostId    String    @map("host_id")
+  title     String
+  isActive  Boolean   @default(true) @map("is_active")
+  startedAt DateTime  @default(now()) @map("started_at")
+  endedAt   DateTime? @map("ended_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  host         User              @relation("LiveHost", fields: [hostId], references: [id], onDelete: Cascade)
+  participants LiveParticipant[]
+
+  @@index([isActive, startedAt])
+  @@index([hostId])
+  @@map("live_rooms")
+}
+
+model LiveParticipant {
+  id       String    @id @default(cuid())
+  roomId   String    @map("room_id")
+  userId   String    @map("user_id")
+  joinedAt DateTime  @default(now()) @map("joined_at")
+  leftAt   DateTime? @map("left_at")
+
+  room LiveRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, userId])
+  @@index([userId])
+  @@map("live_participants")
 }
 
 model Message {
@@ -84,6 +143,7 @@ model Message {
   status                          MessageStatus @default(sent)
   createdAt                       DateTime      @default(now()) @map("created_at")
   updatedAt                       DateTime      @updatedAt @map("updated_at")
+  editedAt                        DateTime?     @map("edited_at")
   deletedAt                       DateTime?     @map("deleted_at")
   replyToId                       String?       @map("reply_to_id")
   forwardedFromMessageId          String?       @map("forwarded_from_message_id")

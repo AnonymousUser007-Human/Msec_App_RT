@@ -19,12 +19,16 @@ const deliveredSchema = z.object({
   messageIds: z.array(z.string().min(1)).min(1),
 });
 const liveRoomSchema = z.object({ roomId: z.string().min(1) });
+const liveTargetSchema = liveRoomSchema.extend({ targetUserId: z.string().min(1) });
 const liveSignalSchema = liveRoomSchema.extend({
   targetUserId: z.string().min(1).optional(),
   signal: z.unknown(),
 });
 const liveChatSchema = liveRoomSchema.extend({
   text: z.string().min(1).max(500),
+});
+const liveTapSchema = liveRoomSchema.extend({
+  count: z.number().int().min(1).max(50).default(1),
 });
 
 export function registerSocketHandlers(io: Server): void {
@@ -148,8 +152,12 @@ async function handleConnection(io: Server, socket: Socket): Promise<void> {
           create: { roomId, userId },
           update: { leftAt: null },
         });
+        const viewer = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { id: true, name: true, avatar: true },
+        });
         await socket.join(`live:${roomId}`);
-        socket.to(`live:${roomId}`).emit("live:viewer_joined", { roomId, userId });
+        socket.to(`live:${roomId}`).emit("live:viewer_joined", { roomId, userId, user: viewer });
         ack?.({ ok: true });
       } catch (e) {
         ack?.({ ok: false, error: e instanceof Error ? e.message : "Erreur" });
@@ -182,6 +190,71 @@ async function handleConnection(io: Server, socket: Socket): Promise<void> {
     } catch {
       /* ignore */
     }
+  });
+
+  socket.on("live:invite", (payload: unknown, ack?: (r: unknown) => void) => {
+    void (async () => {
+      try {
+        const { roomId, targetUserId } = liveTargetSchema.parse(payload);
+        const room = await prisma.liveRoom.findUnique({
+          where: { id: roomId },
+          select: { id: true, title: true, hostId: true, isActive: true, host: { select: { id: true, name: true, avatar: true } } },
+        });
+        if (!room?.isActive) throw new Error("Live introuvable ou terminé");
+        if (room.hostId !== userId) throw new Error("Seul l’hôte peut inviter");
+        io.to(`user:${targetUserId}`).emit("live:invite", {
+          roomId,
+          roomTitle: room.title,
+          fromUserId: userId,
+          fromUser: room.host,
+        });
+        ack?.({ ok: true });
+      } catch (e) {
+        ack?.({ ok: false, error: e instanceof Error ? e.message : "Erreur" });
+      }
+    })();
+  });
+
+  socket.on("live:tap", (payload: unknown) => {
+    try {
+      const { roomId, count } = liveTapSchema.parse(payload);
+      socket.to(`live:${roomId}`).emit("live:tap", { roomId, userId, count });
+    } catch {
+      /* ignore */
+    }
+  });
+
+  socket.on("live:raise_request", (payload: unknown, ack?: (r: unknown) => void) => {
+    void (async () => {
+      try {
+        const { roomId } = liveRoomSchema.parse(payload);
+        const room = await prisma.liveRoom.findUnique({ where: { id: roomId }, select: { hostId: true, isActive: true } });
+        if (!room?.isActive) throw new Error("Live introuvable ou terminé");
+        if (room.hostId === userId) throw new Error("Vous êtes déjà l’hôte");
+        const requester = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, name: true, avatar: true } });
+        if (!requester) throw new Error("Utilisateur introuvable");
+        io.to(`user:${room.hostId}`).emit("live:raise_request", { roomId, userId, user: requester });
+        ack?.({ ok: true });
+      } catch (e) {
+        ack?.({ ok: false, error: e instanceof Error ? e.message : "Erreur" });
+      }
+    })();
+  });
+
+  socket.on("live:raise_approve", (payload: unknown, ack?: (r: unknown) => void) => {
+    void (async () => {
+      try {
+        const { roomId, targetUserId } = liveTargetSchema.parse(payload);
+        const room = await prisma.liveRoom.findUnique({ where: { id: roomId }, select: { hostId: true, isActive: true } });
+        if (!room?.isActive) throw new Error("Live introuvable ou terminé");
+        if (room.hostId !== userId) throw new Error("Seul l’hôte peut faire monter quelqu’un");
+        io.to(`user:${targetUserId}`).emit("live:raise_approved", { roomId, hostId: userId });
+        io.to(`live:${roomId}`).emit("live:cohost_started", { roomId, userId: targetUserId });
+        ack?.({ ok: true });
+      } catch (e) {
+        ack?.({ ok: false, error: e instanceof Error ? e.message : "Erreur" });
+      }
+    })();
   });
 
   socket.on("live:chat", (payload: unknown) => {

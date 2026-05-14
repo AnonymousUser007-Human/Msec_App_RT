@@ -9,8 +9,9 @@ function roomToDto(row: {
   startedAt: Date;
   endedAt: Date | null;
   host: { id: string; name: string; avatar: string | null };
-  participants: { leftAt: Date | null }[];
+  participants: { leftAt: Date | null; user: { id: string; name: string; avatar: string | null } }[];
 }) {
+  const activeParticipants = row.participants.filter((p) => !p.leftAt);
   return {
     id: row.id,
     hostId: row.hostId,
@@ -19,13 +20,19 @@ function roomToDto(row: {
     startedAt: row.startedAt,
     endedAt: row.endedAt,
     host: row.host,
-    viewerCount: row.participants.filter((p) => !p.leftAt).length,
+    viewerCount: activeParticipants.length,
+    participants: activeParticipants.map((p) => p.user),
   };
 }
 
 const roomInclude = {
   host: { select: { id: true, name: true, avatar: true } },
-  participants: { select: { leftAt: true } },
+  participants: {
+    select: {
+      leftAt: true,
+      user: { select: { id: true, name: true, avatar: true } },
+    },
+  },
 } as const;
 
 export async function listActiveRooms() {

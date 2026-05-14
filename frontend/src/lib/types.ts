@@ -79,4 +79,5 @@ export type LiveRoom = {
   endedAt: string | null
   host: { id: string; name: string; avatar: string | null }
   viewerCount: number
+  participants: { id: string; name: string; avatar: string | null }[]
 }

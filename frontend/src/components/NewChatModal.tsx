@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { toast } from 'sonner'
 import { useAuth } from '../context/AuthContext'
 import type { Conversation, User } from '../lib/types'
 import { getJson, postJson } from '../lib/api'
@@ -53,6 +54,8 @@ export function NewChatModal({ open, onClose, onCreated }: Props) {
       onClose()
       setQ('')
       setResults([])
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Création de la discussion privée impossible')
     } finally {
       setCreating(null)
     }
@@ -63,7 +66,7 @@ export function NewChatModal({ open, onClose, onCreated }: Props) {
   }
 
   async function createGroup() {
-    if (!token || !groupName.trim() || selectedIds.length < 2) return
+    if (!token || !groupName.trim() || selectedIds.length < 1) return
     setCreating('group')
     try {
       const conv = await postJson<Conversation>(
@@ -78,6 +81,8 @@ export function NewChatModal({ open, onClose, onCreated }: Props) {
       setSelectedIds([])
       setResults([])
       setMode('private')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Création du groupe impossible')
     } finally {
       setCreating(null)
     }
@@ -144,12 +149,12 @@ export function NewChatModal({ open, onClose, onCreated }: Props) {
             autoFocus
           />
           <p className="mt-2 text-xs text-[var(--sc-text-muted)]">
-            {mode === 'group' ? 'Sélectionnez au moins 2 membres.' : 'Saisissez au moins 2 caractères.'}
+            {mode === 'group' ? 'Sélectionnez au moins 1 membre. Avec vous, cela fait 2 personnes.' : 'Saisissez au moins 2 caractères.'}
           </p>
           {mode === 'group' ? (
             <button
               type="button"
-              disabled={!groupName.trim() || selectedIds.length < 2 || creating === 'group'}
+              disabled={!groupName.trim() || selectedIds.length < 1 || creating === 'group'}
               onClick={() => void createGroup()}
               className="mt-3 w-full cursor-pointer rounded-xl bg-[var(--sc-orange)] px-3 py-2 text-sm font-semibold text-white transition hover:bg-[var(--sc-orange-hover)] disabled:cursor-not-allowed disabled:opacity-50"
             >

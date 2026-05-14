@@ -216,8 +216,8 @@ export async function createGroupConversation(requesterId: string, input: Create
     throw new HttpError(400, "Nom du groupe requis");
   }
   const memberIds = Array.from(new Set([requesterId, ...(input.memberIds ?? [])]));
-  if (memberIds.length < 3) {
-    throw new HttpError(400, "Un groupe doit contenir au moins 3 membres");
+  if (memberIds.length < 2) {
+    throw new HttpError(400, "Un groupe doit contenir au moins 2 membres");
   }
   const existingUsers = await prisma.user.findMany({ where: { id: { in: memberIds } }, select: { id: true } });
   if (existingUsers.length !== memberIds.length) {

@@ -284,6 +284,8 @@ export function ChatThread({ conversation, conversations = [], socket, onConvers
       setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]))
       requestAnimationFrame(scrollToBottom)
       onConversationUpdated()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Envoi du message impossible')
     } finally {
       setSending(false)
     }
